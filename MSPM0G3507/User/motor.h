@@ -13,6 +13,13 @@
 #define PWM_PERIOD      4000     /* timer count period */
 #define PWM_DUTY_MAX    4000
 
+#define MOTOR_L 1
+#define MOTOR_R 2
+
+#define MOTOR_FORWARD 1
+#define MOTOR_BACKWARD 2
+#define MOTOR_STOP 0
+
 void motor_init(uint8_t motor_id);
 void motor_set_duty(uint8_t motor_id, uint32_t duty);
 void motor_set_direction(uint8_t motor_id, uint8_t direction);

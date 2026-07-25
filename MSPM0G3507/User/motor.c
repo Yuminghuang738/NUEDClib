@@ -3,13 +3,13 @@
 
 void motor_init(uint8_t motor_id)
 {
-    if (motor_id == 1)
+    if (motor_id == MOTOR_L)
     {
         DL_GPIO_setPins(Motor_l_AIN1_PORT, Motor_l_AIN1_PIN);
         DL_GPIO_setPins(Motor_l_AIN2_PORT, Motor_l_AIN2_PIN);
         DL_TimerG_setCaptureCompareValue(PWMA_INST, 0U, DL_TIMERG_CAPTURE_COMPARE_0_INDEX);
     }
-    else if (motor_id == 2)
+    else if (motor_id == MOTOR_R)
     {
         DL_GPIO_setPins(Motor_2_PORT, Motor_2_BIN1_PIN);
         DL_GPIO_setPins(Motor_2_PORT, Motor_2_BIN2_PIN);
@@ -28,11 +28,11 @@ void motor_set_duty(uint8_t motor_id, uint32_t duty)
 {
     duty = limit_duty((int32_t)duty);
 
-    if (motor_id == 1)
+    if (motor_id == MOTOR_L)
     {
         DL_TimerG_setCaptureCompareValue(PWMA_INST, duty, DL_TIMERG_CAPTURE_COMPARE_0_INDEX);
     }
-    else if (motor_id == 2)
+    else if (motor_id == MOTOR_R)
     {
         DL_TimerA_setCaptureCompareValue(PWMB_INST, duty, DL_TIMERA_CAPTURE_COMPARE_1_INDEX);
     }
@@ -40,39 +40,43 @@ void motor_set_duty(uint8_t motor_id, uint32_t duty)
 
 void motor_set_direction(uint8_t motor_id, uint8_t direction)
 {
-    if (motor_id == 1)
+    if (motor_id == MOTOR_L)
     {
         switch (direction)
         {
-            case 1U:
+            case MOTOR_FORWARD:   /* forward  */
                 DL_GPIO_setPins(Motor_l_AIN1_PORT, Motor_l_AIN1_PIN);
                 DL_GPIO_clearPins(Motor_l_AIN2_PORT, Motor_l_AIN2_PIN);
                 break;
-            case 2U:
+
+            case MOTOR_BACKWARD:   /* backward */
                 DL_GPIO_clearPins(Motor_l_AIN1_PORT, Motor_l_AIN1_PIN);
                 DL_GPIO_setPins(Motor_l_AIN2_PORT, Motor_l_AIN2_PIN);
                 break;
-            case 0U:
-            default:
+
+            case MOTOR_STOP:
+            default:    /* stop     */
                 DL_GPIO_clearPins(Motor_l_AIN1_PORT, Motor_l_AIN1_PIN);
                 DL_GPIO_clearPins(Motor_l_AIN2_PORT, Motor_l_AIN2_PIN);
                 break;
         }
     }
-    else if (motor_id == 2)
+    else if (motor_id == MOTOR_R)
     {
         switch (direction)
         {
-            case 1U:
+            case MOTOR_FORWARD:   /* forward  */
                 DL_GPIO_setPins(Motor_2_PORT, Motor_2_BIN1_PIN);
                 DL_GPIO_clearPins(Motor_2_PORT, Motor_2_BIN2_PIN);
                 break;
-            case 2U:
+
+            case MOTOR_BACKWARD:   /* backward */
                 DL_GPIO_clearPins(Motor_2_PORT, Motor_2_BIN1_PIN);
                 DL_GPIO_setPins(Motor_2_PORT, Motor_2_BIN2_PIN);
                 break;
-            case 0U:
-            default:
+
+            case MOTOR_STOP:
+            default:    /* stop     */
                 DL_GPIO_clearPins(Motor_2_PORT, Motor_2_BIN1_PIN);
                 DL_GPIO_clearPins(Motor_2_PORT, Motor_2_BIN2_PIN);
                 break;
@@ -90,13 +94,14 @@ volatile float speed_2 = 0;
 
 void calculate_speed(uint8_t motor_id)
 {
-    if (motor_id == 1)
+    
+    if (motor_id == MOTOR_L)
     {
         uint32_t cnt = counter_1_A;
         counter_1_A = 0;
         speed_1 = (float)cnt / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 1000/PID_T;
     }
-    if (motor_id == 2)
+    if (motor_id == MOTOR_R)
     {
         uint32_t cnt = counter_2_A;
         counter_2_A = 0;
@@ -125,7 +130,8 @@ float integral_2 = 0;
 void motor_PID(uint8_t motor_id)
 {
     float error;
-    if (motor_id == 1) {
+    if (motor_id == MOTOR_L) 
+    {
         error = target_speed_1 - speed_1;
         current_error_1 = error;
 
@@ -140,7 +146,8 @@ void motor_PID(uint8_t motor_id)
         last_error_1 = current_error_1;
         motor_set_duty(motor_id, (uint32_t)PWM_1_duty);
     }
-    if (motor_id == 2) {
+    if (motor_id == MOTOR_R) 
+    {
         error = target_speed_2 - speed_2;
         current_error_2 = error;
 

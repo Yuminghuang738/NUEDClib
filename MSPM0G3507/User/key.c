@@ -1,28 +1,64 @@
 #include "key.h"
 
-volatile uint32_t counter_1_A = 0;
-volatile uint32_t counter_2_A = 0;
-
-void GROUP1_IRQHandler(void) // 编码器计数
+uint8_t get_key_state(uint8_t id)
+{
+    switch (id)
     {
-    switch (DL_GPIO_getPendingInterrupt(GPIOB))
+        case 1:
         {
-        case Motor_l_E1A_IIDX:
+            uint32_t high_bits = DL_GPIO_readPins(KEY_KEY_1_PORT ,KEY_KEY_1_PIN );
+            
+            if ((high_bits & KEY_KEY_1_PIN) != 0)
             {
-            counter_1_A++;
-            DL_GPIO_clearInterruptStatus(GPIOB, Motor_l_E1A_PIN);
-            break;
+                return 1;
             }
-
-        case Motor_2_E2A_IIDX:
+            else
             {
-            counter_2_A++;
-            DL_GPIO_clearInterruptStatus(GPIOB, Motor_2_E2A_PIN);
-            break;
+                return 0;
             }
-        
-        default:
-            break;
         }
+        case 2:
+        {
+            uint32_t high_bits = DL_GPIO_readPins(KEY_KEY_2_PORT ,KEY_KEY_2_PIN );
+            
+            if ((high_bits & KEY_KEY_2_PIN) != 0)
+            {
+                return 1;
+            }
+            else
+            {
+                return 0;
+            }
+        }
+        case 3:
+        {
+            uint32_t high_bits = DL_GPIO_readPins(KEY_KEY_3_PORT ,KEY_KEY_3_PIN );
+            
+            if ((high_bits & KEY_KEY_3_PIN) != 0)
+            {
+                return 1;
+            }
+            else
+            {
+                return 0;
+            }
+        }
+        case 4:
+        {
+            uint32_t high_bits = DL_GPIO_readPins(KEY_KEY_2_PORT ,KEY_KEY_2_PIN );
         
+            if((high_bits & KEY_KEY_4_PIN) != 0)
+            {
+                return 1;
+            }
+            else
+            {
+                return 0;
+            }
+        }
+        default:
+        {    
+            return 0;
+        }
     }
+}

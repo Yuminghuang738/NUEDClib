@@ -7,10 +7,11 @@
 #include "motor.h"
 #include "trace.h"
 #include "jy61p_port.h"
+#include "interrupt.h"
 #include "key.h"
 
-#include "../OpenMV/gimbal_motor.h"
-#include "../OpenMV/vision.h"
+#include "../OpenMV/C/gimbal_motor.h"
+#include "../OpenMV/C/vision.h"
 #include "angle_control.h"
 
 volatile uint32_t sys_tick_ms = 0;
@@ -54,6 +55,7 @@ int main(void)
     sprintf(buf, "RST:%s", reset_name(cause));
     OLED_ShowString(0, 0, (u8 *)buf, 16);
     OLED_Refresh();
+   
     delay_ms(500);
 
     OLED_ShowString(0, 16, (u8 *)"JY61P Init", 16);
@@ -69,8 +71,8 @@ int main(void)
     motor_set_direction(1, 1);
     motor_set_direction(2, 1);
 
-    gimbal_motor_init(GIMBAL_MOTOR_L);
-    gimbal_motor_init(GIMBAL_MOTOR_R);
+    // gimbal_motor_init(GIMBAL_MOTOR_L);
+    // gimbal_motor_init(GIMBAL_MOTOR_R);
 
     JY61P_Angle angle;
     char oled_str[48];
@@ -85,6 +87,7 @@ int main(void)
     drive_mode_t drive_mode = MODE_HOLD;
     uint32_t mode_start_ms = sys_tick_ms;
 
+    
     while (1)
     {
         JY61P_Read_Angle(&angle);

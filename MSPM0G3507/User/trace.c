@@ -61,9 +61,9 @@ void trace_motor(void)
     {
         was_lost = 0;
         motor_set_direction(1, 1);
-        motor_set_direction(2, 1);
-        motor_set_duty(1, 800);
-        motor_set_duty(2, 800);
+        motor_set_direction(2,1);
+        motor_set_duty(1, DUTY_STRAIGHT+20);
+        motor_set_duty(2, DUTY_STRAIGHT);
         return;
     }
 
