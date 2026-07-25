@@ -8,7 +8,6 @@
 #include "trace.h"
 #include "control.h"
 #include "uart.h"
-#include "mpu_port.h"
 #include "interrupt.h"
 #include "key.h"
 
@@ -16,7 +15,7 @@
 #include "../OpenMV/C/vision.h"
 
 volatile int status = 0;
-extern volatile uint32_t sys_tick_ms;
+volatile uint32_t sys_tick_ms = 0;
 
 static const char *reset_name(uint32_t cause)
 {

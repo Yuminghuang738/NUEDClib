@@ -29,4 +29,11 @@ uint32_t limit_duty(int32_t duty);
 /* ── Encoder (called from control ISR) ── */
 int32_t  motor_read_encoder(uint8_t motor_id);  /* returns speed Q8.8 (mm/s × 256) */
 
+extern volatile uint32_t sys_tick_ms;
+
+/* ── Angle control takeover (called from angle_control.c) ── */
+extern volatile uint8_t  angle_ctrl_active;
+extern volatile uint32_t last_angle_ctrl_ms;
+void Motor_SetSpeed(int16_t left, int16_t right);
+
 #endif

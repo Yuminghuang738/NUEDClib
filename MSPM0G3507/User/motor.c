@@ -139,3 +139,41 @@ int32_t motor_read_encoder(uint8_t motor_id)
 
     return (int32_t)(count * SPEED_FACTOR_Q8_8);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Motor_SetSpeed — angle control output interface
+ *
+ *  Called from angle_control.c (main loop context).
+ *  Sets angle_ctrl_active flag → control_update() ISR skips line‑following.
+ *  If not called for >100ms, ISR auto‑recovers to line‑following.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+volatile uint8_t angle_ctrl_active = 0;
+volatile uint32_t last_angle_ctrl_ms = 0;
+
+void Motor_SetSpeed(int16_t left, int16_t right)
+{
+    uint16_t duty;
+
+    angle_ctrl_active   = 1;
+    last_angle_ctrl_ms  = sys_tick_ms;
+
+    /* ── Left motor ── */
+    if (left >= 0) {
+        motor_set_direction(MOTOR_L, MOTOR_FORWARD);
+        duty = (uint16_t)left;
+    } else {
+        motor_set_direction(MOTOR_L, MOTOR_BACKWARD);
+        duty = (uint16_t)(-left);
+    }
+    motor_set_duty(MOTOR_L, (uint32_t)duty);
+
+    /* ── Right motor ── */
+    if (right >= 0) {
+        motor_set_direction(MOTOR_R, MOTOR_FORWARD);
+        duty = (uint16_t)right;
+    } else {
+        motor_set_direction(MOTOR_R, MOTOR_BACKWARD);
+        duty = (uint16_t)(-right);
+    }
+    motor_set_duty(MOTOR_R, (uint32_t)duty);
+}

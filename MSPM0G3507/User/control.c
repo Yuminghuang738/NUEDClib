@@ -9,6 +9,8 @@
 #include "control_closed.h"
 #endif
 
+extern volatile uint32_t sys_tick_ms;
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  control_init
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -23,13 +25,26 @@ void control_init(void)
  *  This is the ONLY function that writes to motor PWM / direction registers.
  *  All mode‑specific duty math lives in control_open.c or control_closed.c.
  *
- *  Three states:
+ *  When angle_ctrl_active is set (by Motor_SetSpeed from angle_control.c),
+ *  line‑following is suspended.  If Motor_SetSpeed is not called for >100 ms,
+ *  line‑following auto‑recovers.
+ *
+ *  Three states (line‑following):
  *    1. active == 0          → cross / end marker → STOP, reset variant
  *    2. inner || active == 4 → straight (inner on line or lost)
  *    3. otherwise             → normal line‑following
  * ═══════════════════════════════════════════════════════════════════════════ */
 void control_update(void)
 {
+    /* ── 0. Angle‑control takeover ─────────────────────────────────────── */
+    if (angle_ctrl_active) {
+        if (sys_tick_ms - last_angle_ctrl_ms > 100) {
+            angle_ctrl_active = 0;                       /* timeout → resume */
+        } else {
+            return;                                      /* still under angle ctrl */
+        }
+    }
+
     /* ── 1. Read sensors ───────────────────────────────────────────────── */
     trace_read();
 

@@ -18,7 +18,6 @@ const GPIO5   = GPIO.addInstance();
 const GPIO6   = GPIO.addInstance();
 const I2C     = scripting.addModule("/ti/driverlib/I2C", {}, false);
 const I2C1    = I2C.addInstance();
-const I2C2    = I2C.addInstance();
 const PWM     = scripting.addModule("/ti/driverlib/PWM", {}, false);
 const PWM1    = PWM.addInstance();
 const PWM2    = PWM.addInstance();
@@ -30,6 +29,7 @@ const TIMER   = scripting.addModule("/ti/driverlib/TIMER", {}, false);
 const TIMER1  = TIMER.addInstance();
 const UART    = scripting.addModule("/ti/driverlib/UART", {}, false);
 const UART1   = UART.addInstance();
+const UART2   = UART.addInstance();
 
 /**
  * Write custom configuration values to the imported modules.
@@ -179,17 +179,6 @@ I2C1.sclPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
 I2C1.sclPinConfig.enableConfig         = true;
 I2C1.sclPinConfig.internalResistor     = "PULL_UP";
 
-I2C2.$name                             = "MPU6050";
-I2C2.basicEnableController             = true;
-I2C2.sdaPinConfig.hideOutputInversion  = scripting.forceWrite(false);
-I2C2.sdaPinConfig.onlyInternalResistor = scripting.forceWrite(false);
-I2C2.sdaPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
-I2C2.sdaPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric10";
-I2C2.sclPinConfig.hideOutputInversion  = scripting.forceWrite(false);
-I2C2.sclPinConfig.onlyInternalResistor = scripting.forceWrite(false);
-I2C2.sclPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
-I2C2.sclPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric11";
-
 PWM1.$name                              = "PWMA";
 PWM1.timerStartTimer                    = true;
 PWM1.ccIndex                            = [0];
@@ -287,6 +276,23 @@ UART1.rxPinConfig.onlyInternalResistor = scripting.forceWrite(false);
 UART1.rxPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
 UART1.rxPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric3";
 
+UART2.$name                            = "JY61P_UART";
+UART2.rxFifoThreshold                  = "DL_UART_RX_FIFO_LEVEL_ONE_ENTRY";
+UART2.targetBaudRate                   = 115200;
+UART2.enableFIFO                       = true;
+UART2.peripheral.$assign               = "UART1";
+UART2.peripheral.rxPin.$assign         = "PA9";
+UART2.peripheral.txPin.$assign         = "PA8";
+UART2.txPinConfig.direction            = scripting.forceWrite("OUTPUT");
+UART2.txPinConfig.hideOutputInversion  = scripting.forceWrite(false);
+UART2.txPinConfig.onlyInternalResistor = scripting.forceWrite(false);
+UART2.txPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
+UART2.txPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric12";
+UART2.rxPinConfig.hideOutputInversion  = scripting.forceWrite(false);
+UART2.rxPinConfig.onlyInternalResistor = scripting.forceWrite(false);
+UART2.rxPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
+UART2.rxPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric13";
+
 /**
  * Pinmux solution for unlocked pins/peripherals. This ensures that minor changes to the automatic solver in a future
  * version of the tool will not impact the pinmux you originally saw.  These lines can be completely deleted in order to
@@ -298,6 +304,3 @@ pinFunction4.peripheral.hfxOutPin.$suggestSolution = "PA6";
 Board.peripheral.$suggestSolution                  = "DEBUGSS";
 Board.peripheral.swclkPin.$suggestSolution         = "PA20";
 Board.peripheral.swdioPin.$suggestSolution         = "PA19";
-I2C2.peripheral.$suggestSolution                   = "I2C0";
-I2C2.peripheral.sdaPin.$suggestSolution            = "PA0";
-I2C2.peripheral.sclPin.$suggestSolution            = "PA1";
