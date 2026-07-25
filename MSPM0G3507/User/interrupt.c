@@ -11,12 +11,12 @@ void GROUP1_IRQHandler(void)
         {
             case KEY_KEY_3_IIDX:
             {
-                status = 2;
+                status = 1;        /* force run */
                 break;
             }
             default:
             break;
-        }  
+        }
     switch (DL_GPIO_getPendingInterrupt(GPIOB))
         {
         case Motor_l_E1A_IIDX: // 编码器A计数
@@ -34,17 +34,17 @@ void GROUP1_IRQHandler(void)
             }
         case KEY_KEY_1_IIDX:
             {
-                status = (status+1) % 3;
+                status = !status;   /* toggle run / stop */
                 break;
             }
         case KEY_KEY_2_IIDX:
             {
-                status = (status+3-1) % 3;
+                status = !status;   /* toggle run / stop */
                 break;
             }
         case KEY_KEY_4_IIDX:
             {
-                status = 0;
+                status = 0;         /* emergency stop */
                 break;
             }
         default:

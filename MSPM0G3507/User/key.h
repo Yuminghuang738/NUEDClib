@@ -3,6 +3,4 @@
 
 #include "ti_msp_dl_config.h"
 
-#define STATUS_TRACE 1
-
 #endif
