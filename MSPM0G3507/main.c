@@ -72,8 +72,8 @@ int main(void)
     NVIC_EnableIRQ(GPIO_MULTIPLE_GPIOB_INT_IRQN);
     NVIC_EnableIRQ(KEY_GPIOA_INT_IRQN );
 
-    motor_set_direction(MOTOR_L, MOTOR_FORWARD);
-    motor_set_direction(MOTOR_R, MOTOR_FORWARD);
+    // motor_set_direction(MOTOR_L, MOTOR_FORWARD);
+    // motor_set_direction(MOTOR_R, MOTOR_FORWARD);
 
     // /* ── JY61P gyroscope init ── */
     // OLED_ShowString(0, 16, (u8 *)"JY61P Init", 16);
@@ -101,8 +101,16 @@ int main(void)
     // drive_mode_t drive_mode = MODE_HOLD;
     // uint32_t mode_start_ms = sys_tick_ms;
 
+    uint32_t last_debug = 0;
+
     while (1)
     {
+        if (sys_tick_ms - last_debug >= 200) {
+            sprintf(buf, "E1:%lu E2:%lu", counter_1_A, counter_2_A);
+            OLED_ShowString(0, 16, (u8 *)buf, 16);
+            OLED_Refresh();
+            last_debug = sys_tick_ms;
+        }
     //     JY61P_Read_Angle(&angle);
 
     //     /* ── Update OLED text (render later in column loop) ── */
