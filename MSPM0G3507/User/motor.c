@@ -222,8 +222,8 @@ void PID_INST_IRQHandler()
         }
 
         if (!angle_ctrl_active) {
-            motor_PID(1);
-            motor_PID(2);
+            motor_PID(MOTOR_L);
+            motor_PID(MOTOR_R);
         }
         break;
     }

@@ -14,9 +14,12 @@
 #include "../OpenMV/C/vision.h"
 #include "angle_control.h"
 
+volatile int status = 0;
+
 volatile uint32_t sys_tick_ms = 0;
 
-typedef enum {
+typedef enum 
+{
     MODE_HOLD = 0,
     MODE_STRAIGHT = 1,
 } drive_mode_t;
