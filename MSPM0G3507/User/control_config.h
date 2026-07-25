@@ -8,7 +8,7 @@
  *     #define CONTROL_CLOSED_LOOP   → closed‑loop (PID speed control)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+// #define CONTROL_OPEN_LOOP
 #define CONTROL_CLOSED_LOOP
-// #define CONTROL_CLOSED_LOOP
 
 #endif
