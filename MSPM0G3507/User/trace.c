@@ -5,13 +5,13 @@ uint8_t trace_data[4] = {0, 0, 0, 0};
 
 /*
  * Sensor layout (left → right):
- *   trace_data[0] = X1  (leftmost)
- *   trace_data[1] = X2
- *   trace_data[2] = X3
- *   trace_data[3] = X4  (rightmost)
+ *   trace_data[1] = X2  (leftmost,  outer)
+ *   trace_data[0] = X1  (inner)
+ *   trace_data[2] = X3  (inner)
+ *   trace_data[3] = X4  (rightmost, outer)
  *
  * Weights for centre‑of‑mass error:
- *   X1: -1    X2: -4    X3: +1    X4: +4
+ *   X2: -4    X1: -1    X3: +1    X4: +4
  *
  *   error < 0 → line is LEFT  → need RIGHT turn (motor_L faster)
  *   error > 0 → line is RIGHT → need LEFT  turn (motor_R faster)
