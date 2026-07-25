@@ -1,3 +1,7 @@
+#include "control_config.h"
+
+#ifdef CONTROL_CLOSED_LOOP
+
 #include "control_closed.h"
 #include "motor.h"
 
@@ -132,3 +136,5 @@ void control_track_duty(int8_t error)
 
     apply_duty();
 }
+
+#endif /* CONTROL_CLOSED_LOOP */

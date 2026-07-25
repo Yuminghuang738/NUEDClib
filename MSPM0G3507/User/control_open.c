@@ -1,3 +1,7 @@
+#include "control_config.h"
+
+#ifdef CONTROL_OPEN_LOOP
+
 #include "control_open.h"
 #include "motor.h"
 
@@ -36,3 +40,5 @@ void control_track_duty(int8_t error)
     motor_set_duty(MOTOR_L, limit_duty(duty_L));
     motor_set_duty(MOTOR_R, limit_duty(duty_R));
 }
+
+#endif /* CONTROL_OPEN_LOOP */

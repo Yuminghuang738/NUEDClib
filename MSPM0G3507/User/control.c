@@ -1,6 +1,13 @@
 #include "control.h"
+#include "control_config.h"
 #include "trace.h"
 #include "motor.h"
+
+#ifdef CONTROL_OPEN_LOOP
+#include "control_open.h"
+#else
+#include "control_closed.h"
+#endif
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  control_init
@@ -14,8 +21,7 @@ void control_init(void)
  *  control_update  — called every PID_PERIOD_MS from timer ISR
  *
  *  This is the ONLY function that writes to motor PWM / direction registers.
- *  All mode‑specific duty math lives in the variant hooks
- *  (control_open.c or control_closed.c).
+ *  All mode‑specific duty math lives in control_open.c or control_closed.c.
  *
  *  Three states:
  *    1. active == 0          → cross / end marker → STOP, reset variant
