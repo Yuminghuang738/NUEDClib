@@ -166,6 +166,11 @@ float JY61P_Get_Yaw(void)
     return jy61p_angle.yaw;
 }
 
+float JY61P_Get_Yaw_Cached(void)
+{
+    return jy61p_angle.yaw;
+}
+
 void JY61P_WriteReg(uint8_t addr, uint16_t value)
 {
     send_bytes(unlock_cmd, 5);

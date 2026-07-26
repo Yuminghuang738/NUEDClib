@@ -37,6 +37,7 @@ void JY61P_SetBaud(uint32_t baud);
 int  JY61P_DetectBaud(const uint32_t *baud_list, int count);
 int  JY61P_Read_Angle(JY61P_Angle *angle);
 float JY61P_Get_Yaw(void);
+float JY61P_Get_Yaw_Cached(void);
 void JY61P_WriteReg(uint8_t addr, uint16_t value);
 void JY61P_ConfigDefaults(void);
 
