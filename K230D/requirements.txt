@@ -1,0 +1,10 @@
+# K230D 钢球数量识别 — 训练环境依赖
+# 安装: pip install -r requirements.txt
+
+tensorflow>=2.12.0
+numpy>=1.24.0
+opencv-python>=4.8.0
+matplotlib>=3.7.0
+scikit-learn>=1.3.0
+pillow>=10.0.0
+tqdm>=4.65.0
