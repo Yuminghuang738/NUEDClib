@@ -6,21 +6,43 @@
 #include "gimbal_motor.h"
 #include "../MSPM0G3507/User/uart.h"
 
-// 水平轴 (L 电机) 控制参数
-#define VISION_KP_X             1     // 比例增益
-#define VISION_DEAD_ZONE_ENTER_X 3    // 进入死区阈值 (像素)
-#define VISION_DEAD_ZONE_EXIT_X  5    // 退出死区阈值 (像素)
-#define VISION_SPEED_MIN_X      5     // 最小跟踪速度 (°/s)
-#define VISION_SPEED_MAX_X      80    // 最大跟踪速度 (°/s)
+// ═══════════════════════════════════════════════════════════════
+// 平衡滚球 — 控制参数配置
+// ═══════════════════════════════════════════════════════════════
+//
+// 机械结构:
+//   步进电机 → 绕线盘 → 绳子 → 摆杆顶端
+//   X 轴偏差 → 绳长调节 (收绳/放绳) → 摆杆倾角变化 → 钢球回正
+//
+// 方向约定 (需根据实际绕线方向确认):
+//   deviation > 0 (球偏右) → FORWARD  (放绳, 右侧下降)
+//   deviation < 0 (球偏左) → REVERSE (收绳, 右侧上升)
+//   如果方向反了, 交换 gimbal_motor_set_dir 的 FORWARD/REVERSE 即可
+//
+// 调参顺序:
+//   1. KP_X: 从 1 开始, 逐步增大直到钢球能回正, 出现震荡后回退到 70%
+//   2. DEAD_ZONE: 根据容许的平衡误差设定 (越小越精确但越容易震荡)
+//   3. SPEED_MIN: 能克服静摩擦的最小速度
+//   4. SPEED_MAX: 限制最大速度防止绳子松脱或过冲
+//
+// ── X 轴 (R 电机, 绳长控制) ──
+#define VISION_KP_X               2     // 比例增益: speed = KP * |offset|
+                                        // 绳长系统响应慢, KP 通常比云台高
+#define VISION_DEAD_ZONE_ENTER_X  2     // 进入死区阈值 (像素) — 平衡容许误差
+#define VISION_DEAD_ZONE_EXIT_X   4     // 退出死区阈值 (像素)
+#define VISION_SPEED_MIN_X        3     // 最小速度 (°/s) — 微调时用
+#define VISION_SPEED_MAX_X        60    // 最大速度 (°/s) — 防止绕线过快松脱
 
-// 垂直轴 (R 电机) 控制参数
-#define VISION_KP_Y             1     // 比例增益
-#define VISION_DEAD_ZONE_ENTER_Y 3    // 进入死区阈值 (像素)
-#define VISION_DEAD_ZONE_EXIT_Y  5    // 退出死区阈值 (像素)
-#define VISION_SPEED_MIN_Y      5     // 最小跟踪速度 (°/s)
-#define VISION_SPEED_MAX_Y      80    // 最大跟踪速度 (°/s)
+// ── Y 轴 (L 电机, 保留/备用) ──
+#define VISION_KP_Y               1     // 比例增益
+#define VISION_DEAD_ZONE_ENTER_Y  3     // 进入死区阈值 (像素)
+#define VISION_DEAD_ZONE_EXIT_Y   5     // 退出死区阈值 (像素)
+#define VISION_SPEED_MIN_Y        5     // 最小跟踪速度 (°/s)
+#define VISION_SPEED_MAX_Y        80    // 最大跟踪速度 (°/s)
 
-// 共用超时与滤波
+// ── 共用超时与滤波 ──
+// 钢球短暂丢失时 EMA 向 0 衰减 (~330ms 进入死区停机)
+// 持续无帧超过 TIMEOUT → 强制停机 + EMA 复位
 #define VISION_TIMEOUT_MS       200   // 失联超时 (ms)
 #define VISION_EMA_ALPHA_Q8     64    // EMA 系数 Q8: 64/256 = 0.25
 
@@ -171,12 +193,13 @@ void process_deviation(void)
     int8_t ctrl_x = (int8_t)(ema_x_q8 >> 8);
     int8_t ctrl_y = (int8_t)(ema_y_q8 >> 8);
 
-    control_axis(GIMBAL_MOTOR_L, ctrl_x,
+    // R 电机 = 绳长控制 (X 轴偏差), L 电机 = 保留/备用 (Y 轴偏差)
+    control_axis(GIMBAL_MOTOR_R, ctrl_x,
                  VISION_KP_X, VISION_DEAD_ZONE_ENTER_X, VISION_DEAD_ZONE_EXIT_X,
                  VISION_SPEED_MIN_X, VISION_SPEED_MAX_X,
                  last_confidence);
 
-    control_axis(GIMBAL_MOTOR_R, ctrl_y,
+    control_axis(GIMBAL_MOTOR_L, ctrl_y,
                  VISION_KP_Y, VISION_DEAD_ZONE_ENTER_Y, VISION_DEAD_ZONE_EXIT_Y,
                  VISION_SPEED_MIN_Y, VISION_SPEED_MAX_Y,
                  last_confidence);
