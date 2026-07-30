@@ -6,9 +6,9 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        OpenMV Cam                              │
 │  main.py / get_regression.py / template_matching.py / ...       │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌─────────────┐ │
-│  │ 传感器    │ → │ 检测算法  │ → │ 偏移计算  │ → │ 帧打包      │ │
-│  │ snapshot  │   │ find_*   │   │ cx,cy→off │   │ struct.pack │ │
+│  ┌──────────┐   ┌─────────────────┐   ┌──────────┐   ┌─────────────┐ │
+│  │ 传感器    │ → │ 融合检测        │ → │ 偏移计算  │ → │ 帧打包      │ │
+│  │ snapshot  │   │ 霍夫圆 + 高光    │   │ X轴 only  │   │ struct.pack │ │
 │  └──────────┘   └──────────┘   └──────────┘   └──────┬──────┘ │
 │                                                       │ UART TX│
 └───────────────────────────────────────────────────────┼────────┘
@@ -18,8 +18,8 @@
 ┌───────────────────────────────────────────────────────┼────────┐
 │                        MSPM0G3507                      │ RX     │
 │  ┌──────────┐   ┌──────────────┐   ┌──────────────────┴──────┐ │
-│  │ 电机驱动  │ ← │  P 控制器     │ ← │  UART 解析              │ │
-│  │ gimbal   │   │  vision.c    │   │  uart.c                 │ │
+│  │ R 电机    │ ← │  P 控制器     │ ← │  UART 解析              │ │
+│  │ 绳长控制  │   │  vision.c    │   │  uart.c                 │ │
 │  └──────────┘   └──────────────┘   └─────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -68,12 +68,12 @@
 
 ### 1.4 偏移值范围
 
-QQVGA = 160×120 像素，画面中心 = (80, 60)：
+QQVGA = 160×120 像素，画面中心 = (80, 60)。平衡滚球任务仅使用 X 轴（沿水管方向），Y 轴恒为 0：
 
 | 字段 | 类型 | 范围 | 含义 |
 |------|------|------|------|
-| `offset_x` | int8 | -80 ~ +79 | 正值=目标在中心右侧, 负值=左侧 |
-| `offset_y` | int8 | -60 ~ +59 | 正值=目标在中心下方, 负值=上方 |
+| `offset_x` | int8 | -80 ~ +79 | 正值=钢球在参考点右侧, 负值=左侧 → 绳长调节 |
+| `offset_y` | int8 | 0 | **恒为 0**（水管横向放置，Y 轴不可控） |
 
 ### 1.5 data_valid=0 时的约定
 
@@ -138,6 +138,7 @@ MSPM0 会根据 confidence 缩放电机速度：conf=3 → 全速, conf=2 → 75
 | 线性回归循迹 | `get_regression.py` | GRAYSCALE | `get_regression` | 回归强度 magnitude |
 | 模板匹配追踪 | `template_matching.py` | GRAYSCALE | `find_template` | 相关系数 score |
 | 灰度 blob 检测 | `find_blobs.py` | GRAYSCALE | `find_blobs` | 未改造 |
+| **平衡滚球** | `main_balance_ball.py` | RGB565 | **霍夫圆 + 高光融合** | 融合分数 |
 
 ---
 
@@ -205,31 +206,30 @@ bool UART_get_deviations(uint8_t *out_status, int8_t *out_x, int8_t *out_y);
 //   2. 解析 data_valid / confidence
 //   3. EMA 低通滤波（有效帧跟踪测量值，无效帧向 0 衰减）
 //   4. 迟滞死区判断
-//   5. P 控制 + 置信度增益缩放
-//   6. 输出到云台电机
+//   5. PD 控制器 (位置 + 速度阻尼)
+//   6. 步进定位输出 (固定速度, 变角度)
 void process_deviation(void);
 ```
 
 **配置宏（可调参数）：**
 
 ```c
-// ── X 轴 (L 电机, 水平旋转) ──
-#define VISION_KP_X               1     // 比例增益 (speed = KP * |offset|)
-#define VISION_DEAD_ZONE_ENTER_X  3     // 进入死区阈值 (像素)
-#define VISION_DEAD_ZONE_EXIT_X   5     // 退出死区阈值 (像素)
-#define VISION_SPEED_MIN_X        5     // 最小速度 (°/s)
-#define VISION_SPEED_MAX_X        80    // 最大速度 (°/s)
+// ── PD 控制器 ──
+#define VISION_KP_X               2       // 比例增益 (P — 位置纠正)
+#define VISION_KD_X               2       // 微分增益 (D — 速度阻尼)
 
-// ── Y 轴 (R 电机, 垂直旋转) ──
-#define VISION_KP_Y               1
-#define VISION_DEAD_ZONE_ENTER_Y  3
-#define VISION_DEAD_ZONE_EXIT_Y   5
-#define VISION_SPEED_MIN_Y        5
-#define VISION_SPEED_MAX_Y        80
+// ── 步进定位 ──
+#define VISION_K_ANGLE_X          2.0f    // deg/pixel: 像素→角度映射
+#define VISION_STEP_SPEED_X       60      // 固定步进速度 (deg/s)
+#define VISION_MAX_ANGLE_PER_FRAME 12     // 单帧最大角度 (防止过冲)
+
+// ── 死区 ──
+#define VISION_DEAD_ZONE_ENTER_X  2       // 进入死区阈值 (像素)
+#define VISION_DEAD_ZONE_EXIT_X   4       // 退出死区阈值 (像素)
 
 // ── 共用 ──
-#define VISION_TIMEOUT_MS         200   // 失联超时 (ms)
-#define VISION_EMA_ALPHA_Q8       64    // EMA 系数 Q8: 64/256=0.25
+#define VISION_TIMEOUT_MS         200     // 失联超时 (ms)
+#define VISION_EMA_ALPHA_Q8       64      // EMA 系数 Q8: 64/256=0.25
 ```
 
 **置信度增益表：**
@@ -237,9 +237,9 @@ void process_deviation(void);
 ```c
 static const uint16_t CONF_GAIN_Q8[] = {0, 128, 192, 256};
 //   conf=0:   0/256 = 0.00x (不应出现，data_valid=0 时不进入控制)
-//   conf=1: 128/256 = 0.50x (勉强检测 → 半速谨慎)
-//   conf=2: 192/256 = 0.75x (基本确定 → 中速)
-//   conf=3: 256/256 = 1.00x (高度可信 → 全速)
+//   conf=1: 128/256 = 0.50x (勉强检测 → 半幅度)
+//   conf=2: 192/256 = 0.75x (基本确定 → 中幅度)
+//   conf=3: 256/256 = 1.00x (高度可信 → 全幅度)
 ```
 
 **控制流程图：**
@@ -247,32 +247,34 @@ static const uint16_t CONF_GAIN_Q8[] = {0, 128, 192, 256};
 ```
 process_deviation()
   │
-  ├─ UART_get_deviations(&status, &x, &y)
+  ├─ UART_get_deviations(&status, &x, &y)   // y 忽略
   │    │
   │    ├─ 有帧 → 更新 last_frame_ms
   │    │         │
-  │    │         ├─ data_valid=1 → 更新 last_dev, last_confidence, EMA 跟踪测量值
+  │    │         ├─ data_valid=1 → 更新 last_dev_x, last_confidence, EMA 跟踪 X
   │    │         └─ data_valid=0 → EMA 向 0 衰减 (每帧 ×0.75)
   │    │
   │    └─ 无帧 → 不更新（last_frame_ms 不动 → 200ms 后超时）
   │
   ├─ 超时检查 (sys_tick_ms - last_frame_ms > 200ms)
-  │    └─ 超时 → 两轴停机 + EMA 复位 + return
+  │    └─ 超时 → R 电机停机 + EMA/PD 复位 + return
   │
-  └─ control_axis(L, ctrl_x, ..., last_confidence)
-     control_axis(R, ctrl_y, ..., last_confidence)
+  └─ control_axis(filtered_dev, confidence)   // PD + 步进定位
        │
-       ├─ 迟滞死区判断
-       │    ├─ 在死区内, |dev| ≤ exit  → 停机, return
-       │    ├─ 在死区内, |dev| >  exit → 退出死区, 继续
-       │    ├─ 跟踪中,   |dev| ≤ enter → 进入死区, 停机, return
-       │    └─ 跟踪中,   |dev| >  enter → 继续
+       ├─ 迟滞死区判断 (同前)
        │
-       ├─ speed = KP * |dev|
-       ├─ clamp(speed, speed_min, speed_max)
-       ├─ speed = speed * CONF_GAIN_Q8[confidence] >> 8
-       ├─ speed = max(speed, 1)   // 保证能动
-       └─ 设置方向 + 写入 PWM
+       ├─ velocity = deviation - last_error_x    // 速度估计
+       ├─ output = KP * deviation + KD * velocity  // PD 输出
+       │    │
+       │    ├─ 球远离中心, 速度同向 → P+D 叠加, 强力纠正
+       │    └─ 球回正中, 速度反向 → D 抵消 P, 减轻力度防过冲
+       │
+       ├─ target_angle = K_ANGLE * |output|       // 像素 → 角度
+       ├─ clamp(target_angle, 0, MAX_ANGLE_PER_FRAME)
+       ├─ target_angle *= CONF_GAIN_Q8[confidence] >> 8
+       ├─ set_dir(R, deviation > 0 ? FWD : REV)
+       ├─ set_speed(R, STEP_SPEED)   // 固定速度
+       └─ set_angle(R, target_angle) // 走完自动停 (ISR 计数)
 ```
 
 ### 3.4 EMA 衰减机制
@@ -281,8 +283,7 @@ process_deviation()
 
 ```c
 // 用虚拟测量值 0 驱动衰减，每帧乘以 0.75
-ema_x_q8 -= ema_x_q8 >> 2;   // ema = ema * 3/4
-ema_y_q8 -= ema_y_q8 >> 2;
+ema_x_q8 -= ema_x_q8 >> 2;   // ema = ema * 3/4  (仅 X 轴)
 ```
 
 **解决的问题：**
@@ -296,30 +297,15 @@ ema_y_q8 -= ema_y_q8 >> 2;
 
 ### 3.5 云台电机层 (gimbal_motor.h / gimbal_motor.c)
 
-**公共接口：**
-
-```c
-#define GIMBAL_MOTOR_L 0   // 水平轴
-#define GIMBAL_MOTOR_R 1   // 垂直轴
-#define GIMBAL_MOTOR_DIRECTION_FORWARD  0
-#define GIMBAL_MOTOR_DIRECTION_REVERSE  1
-
-void gimbal_motor_init(uint8_t motor_id);
-void gimbal_motor_set_dir(uint8_t motor_id, uint8_t direction);
-void gimbal_motor_set_speed(uint8_t motor_id, uint8_t speed);     // 速度 (°/s)
-void gimbal_motor_set_continuous(uint8_t motor_id, uint8_t continuous); // 连续模式
-void gimbal_motor_start(uint8_t motor_id);
-void gimbal_motor_stop(uint8_t motor_id);
-void gimbal_motor_set_angle(uint8_t motor_id, uint8_t angle);     // 定角度转动
-```
+平衡滚球任务仅使用 R 电机（绳长控制），L 电机保留不使用。
 
 **连续转动模式：**
 
-`vision.c` 启动时调用 `gimbal_motor_set_continuous(L/R, 1)`，设置静态标志位 `gimbal_continuous_l/r = 1`。每次 PWM 脉冲触发 ISR 时：
+`vision.c` 启动时调用 `gimbal_motor_set_continuous(R, 1)`，设置静态标志位 `gimbal_continuous_r = 1`。每次 PWM 脉冲触发 ISR 时：
 
 ```
 ISR → 检查 gimbal_continuous
-        ├─ =1 → break（跳过步数计数，不停机）← 云台用这个
+        ├─ =1 → break（跳过步数计数，不停机）← 绳长控制用这个
         └─ =0 → step_remain-- → 到 0 自动停机 ← 角度模式用这个
 ```
 
@@ -403,3 +389,4 @@ MSPM0 在 OpenMV 发帧之前（前 2 秒）处于超时状态，电机会保持
 | 2026-07-19 | get_regression.py / template_matching.py 适配协议 | get_regression.py, template_matching.py |
 | 2026-07-19 | EMA data_valid=0 衰减机制 | vision.c |
 | 2026-07-19 | R 电机方向 GPIO 修正 | gimbal_motor.c |
+| 2026-07-30 | **PD 控制器 + 步进定位** (替代纯P+连续速度)；ROI 精准化 (收紧阈值/移除全图降级/几何约束) | vision.c, main_balance_ball.py |
