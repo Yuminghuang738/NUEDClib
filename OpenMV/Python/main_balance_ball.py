@@ -74,14 +74,14 @@ CIRCLE_MAG_MIN   = 6       # 最小累加器强度 (小球 magnitude 天然低)
 # LAB 格式: (L_min, L_max, A_min, A_max, B_min, B_max)
 # 钢球高光 = 亮白 (高 L, A/B 中性)
 
-HIGHLIGHT_THRESHOLD = [(85, 100, -30, 30, -30, 30)]
+HIGHLIGHT_THRESHOLD = [(100, 100, -30, 30, -30, 30)]
 
 # ═══════════════════════════════════════════════════════════════
 # 颜色 blob 检测参数 — 钢球本体 (暗色金属, 用作兜底)
 # ═══════════════════════════════════════════════════════════════
 
 BALL_THRESHOLD = [
-    (85, 100, -30, 30, -30, 30)
+    (100, 100, -30, 30, -30, 30)
 ]
 # L: 0-80   (暗色, 钢球吸收光线)
 # A: -10~10 (中性色, 非绿非红)
@@ -112,7 +112,7 @@ sensor.set_pixformat(sensor.RGB565)           # 彩色模式 (LAB 阈值 + 霍�
 sensor.set_framesize(sensor.QVGA)              # 320×240, 球~10-20px, 60fps
 sensor.set_auto_gain(False)
 sensor.set_auto_whitebal(False)
-sensor.set_auto_exposure(False, exposure_us=25000)  # 进光量↑, 高光更亮
+sensor.set_auto_exposure(False, exposure_us=20000)                # 自适应早晚光线变化
 sensor.skip_frames(time=2000)
 
 clock = time.clock()
