@@ -9,6 +9,8 @@
 #include "control.h"
 #include "speed_pid.h"
 #include "interrupt.h"
+#include "../OpenMV/C/vision.h"
+#include "../OpenMV/C/gimbal_motor.h"
 
 volatile int status = 0;
 volatile uint32_t sys_tick_ms = 0;
@@ -35,9 +37,12 @@ int main(void)
     motor_init(MOTOR_L);
     motor_init(MOTOR_R);
     control_init();
+    gimbal_motor_init(GIMBAL_MOTOR_L);
+    gimbal_motor_init(GIMBAL_MOTOR_R);
 
-    /* KEY_1=循迹停车, KEY_4=不停车循迹, 禁用 KEY_2/KEY_3 */
-    DL_GPIO_disableInterrupt(GPIOA, KEY_KEY_3_PIN);
+    /* KEY_1=循迹, KEY_3=任务三, KEY_4=不停车循迹 */
+    DL_GPIO_enableInterrupt(GPIOA, KEY_KEY_3_PIN);
+    NVIC_EnableIRQ(KEY_GPIOA_INT_IRQN);
 
     DL_Timer_startCounter(PID_INST);
     NVIC_EnableIRQ(PID_INST_INT_IRQN);
@@ -46,8 +51,9 @@ int main(void)
     motor_set_direction(MOTOR_L, MOTOR_FORWARD);
     motor_set_direction(MOTOR_R, MOTOR_FORWARD);
 
-    enum { MODE_IDLE, MODE_TRACE };
-    int run_mode = MODE_IDLE;
+    enum { MODE_IDLE, MODE_TRACE, MODE_VISION };
+    int run_mode = MODE_VISION;
+    bool task3_active = false;
 
     /* ── 循迹状态 ── */
     enum { TR_IDLE, WAIT_START, CROSS_SEEN, RUNNING, FINISHED };
@@ -159,6 +165,22 @@ int main(void)
                         nostop_mode ? "NS" : "R ");
                 OLED_ShowString(0, 0, (uint8_t *)buf, 16);
             }
+        }
+
+        /* ═══════════════════════════════════════════════════════
+         *  视觉平衡模式 — KEY_3 切换任务三
+         * ═══════════════════════════════════════════════════════ */
+        if (run_mode == MODE_VISION)
+        {
+            if (key_angle_flag) {
+                key_angle_flag = 0;
+                task3_active = !task3_active;
+            }
+
+            if (task3_active)
+                process_deviation_task3();
+            else
+                process_deviation();
         }
 
         if (sys_tick_ms - last_oled >= 50) {
