@@ -31,7 +31,7 @@
 //   KP_POS: 1px 偏差 → 多少度倾角  (范围 0.1~0.5)
 //   KD_POS: 1px/帧 球速 → 减多少度倾角 (阻尼, 范围 KP/4 ~ KP*2)
 // ═══════════════════════════════════════════════════════════════
-#define KP_POS               F8(1.8f)  // °/px
+#define KP_POS               F8(2.0f)  // °/px
 #define KD_POS               F8(18.0f)   // °/(px/frame)
 #define MAX_TILT             F8(9.0f)  // 期望倾角上限
 #define DEAD_ZONE            F8(0.5f)   // 位置死区 (偏差单位, =1像素)
