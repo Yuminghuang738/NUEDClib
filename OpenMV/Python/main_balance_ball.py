@@ -101,7 +101,8 @@ ROI_MARGIN       = 10      # 水管 ROI 外扩像素 (覆盖管道两端余量)
 # 初始参考位置采集
 # ═══════════════════════════════════════════════════════════════
 
-REF_FRAMES = 15            # 采集帧数 (取平均作为参考零点)
+REF_FRAMES = 30            # 采集帧数 (取平均作为参考零点, 含异常值剔除)
+REF_MIN_SCORE = 6.0        # 参考采集最低分数 (只取 score≥6 的可靠帧)
 
 # ═══════════════════════════════════════════════════════════════
 # 传感器初始化
@@ -112,7 +113,7 @@ sensor.set_pixformat(sensor.RGB565)           # 彩色模式 (LAB 阈值 + 霍�
 sensor.set_framesize(sensor.QVGA)              # 320×240, 球~10-20px, 60fps
 sensor.set_auto_gain(False)
 sensor.set_auto_whitebal(False)
-sensor.set_auto_exposure(False, exposure_us=20000)                # 自适应早晚光线变化
+sensor.set_auto_exposure(False, exposure_us=40000)                # 低曝光减少运动模糊 (需配套调整阈值)
 sensor.skip_frames(time=2000)
 
 clock = time.clock()
@@ -498,10 +499,11 @@ while True:
                                     color=(255, 0, 0))
 
         if not ref_locked:
-            # ── 参考采集阶段 ──
-            ref_sum_x += ball_cx
-            ref_sum_y += ball_cy
-            ref_count += 1
+            # ── 参考采集阶段 (仅取高置信度帧, 防止异常值污染参考点) ──
+            if ball_score >= REF_MIN_SCORE:
+                ref_sum_x += ball_cx
+                ref_sum_y += ball_cy
+                ref_count += 1
 
             if DEBUG and ref_count % 5 == 0:
                 print(f"[REF] collecting... {ref_count}/{REF_FRAMES}")
@@ -514,7 +516,8 @@ while True:
                     print(f"[REF] locked! ref_x={ref_x}, ref_y={ref_y}")
         else:
             # ── 正常跟踪: 仅 X 轴偏差 (沿水管方向) ──
-            offset_x = (ball_cx - (ref_x + TARGET_SHIFT)) // 2  # QVGA→int8
+            # 四舍五入 (替代截断 // 2, 保留 0.5px 精度)
+            offset_x = int(round((ball_cx - (ref_x + TARGET_SHIFT)) / 2.0))
             # offset_y 恒为 0 — 水管横向放置, Y 轴不可控
 
             if DEBUG:
