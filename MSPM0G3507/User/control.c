@@ -35,6 +35,11 @@ volatile uint8_t  stop_armed         = 0;   /* 3s 后置 1 */
 float Trace_Kp = 35.0f;
 float Trace_Kd = 15.0f;
 
+/* 不停车循迹参数 (KEY_4: 任务4/5/6, 带平衡球, 减小速度+平顺PID 避免球摇摆) */
+#define NOSTOP_TRACE_KP     15.0f
+#define NOSTOP_TRACE_KD      6.0f
+#define NOSTOP_BASE_SPEED  200.0f
+
 static int8_t  last_pos_error  = 0;
 static int8_t  last_valid_error = 0;   /* 丢线时保持最后有效误差方向 */
 static uint8_t first_pos_call  = 1;
@@ -91,18 +96,22 @@ void control_update(void)
 
     error = (int8_t)((int16_t)error * TRACE_POLARITY);
 
+    float kp   = nostop_mode ? NOSTOP_TRACE_KP   : Trace_Kp;
+    float kd   = nostop_mode ? NOSTOP_TRACE_KD   : Trace_Kd;
+    float base = nostop_mode ? NOSTOP_BASE_SPEED : Base_Speed_mm_s;
+
     float turn;
     if (first_pos_call) {
-        turn = Trace_Kp * (float)error;
+        turn = kp * (float)error;
         first_pos_call = 0;
     } else {
-        turn = Trace_Kp * (float)error
-             + Trace_Kd * (float)(error - last_pos_error);
+        turn = kp * (float)error
+             + kd * (float)(error - last_pos_error);
     }
     last_pos_error = error;
 
-    float target_l = Base_Speed_mm_s - turn;
-    float target_r = Base_Speed_mm_s + turn;
+    float target_l = base - turn;
+    float target_r = base + turn;
     if (target_l < 30.0f) target_l = 30.0f;
     if (target_r < 30.0f) target_r = 30.0f;
 
