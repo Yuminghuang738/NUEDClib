@@ -17,7 +17,7 @@
 float Speed_Kp        = 2.0f;    /* 速度 P 增益 (duty / mm/s)       */
 float Speed_Ki        = 1.0f;    /* 速度 I 增益 (duty / mm/s·s)     */
 float Speed_Kd        = 0.0f;    /* 速度 D 增益 (一般不用)          */
-float Base_Speed_mm_s = 230.0f;  /* 基础线速度 mm/s                */
+float Base_Speed_mm_s = 280.0f;  /* 基础线速度 mm/s                */
 float Max_Speed_mm_s  = 700.0f;  /* 满占空比(4000)时的线速度 mm/s  */
 
 /* ── 内部状态 ── */
@@ -60,7 +60,7 @@ void Speed_PID_Update(float target_l_mm_s, float target_r_mm_s)
     float err_l = target_l_mm_s - actual_l_mm_s;
 
     /* 积分分离: 仅极端偏差时清零, 堵转时误差=Base_Speed(~150)不会被清 */
-    if (err_l > 250.0f || err_l < -250.0f) {
+    if (err_l > 400.0f || err_l < -400.0f) {
         integral_l = 0.0f;
     } else {
         integral_l += err_l * SPEED_PID_DT;
@@ -76,7 +76,7 @@ void Speed_PID_Update(float target_l_mm_s, float target_r_mm_s)
     float ff_r  = target_r_mm_s * (4000.0f / Max_Speed_mm_s);
     float err_r = target_r_mm_s - actual_r_mm_s;
 
-    if (err_r > 250.0f || err_r < -250.0f) {
+    if (err_r > 400.0f || err_r < -400.0f) {
         integral_r = 0.0f;
     } else {
         integral_r += err_r * SPEED_PID_DT;

@@ -5,10 +5,9 @@
 
 extern volatile uint32_t counter_1_A;
 extern volatile uint32_t counter_2_A;
-
-extern volatile uint8_t key_start_flag;
-extern volatile uint8_t key_mode_trace;
-extern volatile uint8_t key_mode_angle;
-extern volatile uint8_t key_stop_flag;
+extern volatile uint32_t encoder_total;
+extern volatile uint8_t  key_start_flag;
+extern volatile uint8_t  key_nostop_flag;
+extern volatile uint8_t  nostop_mode;
 
 #endif
