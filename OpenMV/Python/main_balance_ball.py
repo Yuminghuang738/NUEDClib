@@ -143,6 +143,11 @@ last_ball_cx = None
 last_ball_cy = None
 TRACK_WINDOW  = 30          # 追踪窗口半边长 (px)
 
+# ── 运动检测 (通道4) ──
+prev_roi_img = None          # 上一帧 ROI 灰度图, 用于帧间差分
+MOTION_THRESHOLD = 15        # 差分亮度阈值 (>15 = 有运动)
+MOTION_MIN_PIXELS = 4        # 运动 blob 最小像素
+
 # ═══════════════════════════════════════════════════════════════
 # 辅助函数
 # ═══════════════════════════════════════════════════════════════
@@ -271,13 +276,44 @@ def detect_ball_fusion(img, roi_tuple, ref_cx=None, ref_cy=None):
         pass
 
     # ═══════════════════════════════════════════════════════════
+    # 通道 4: 运动检测 (帧间差分)
+    #   管道里唯一会动的东西就是球 — 差分亮斑 = 球在动
+    #   管端光照差时颜色/高光/圆可能全失效, 运动兜底
+    # ═══════════════════════════════════════════════════════════
+    global prev_roi_img
+    motion_candidates = []      # [(cx, cy, pixels, blob)]
+
+    try:
+        sub = img.copy(roi=roi_tuple)
+    except Exception:
+        sub = None
+
+    if sub is not None and prev_roi_img is not None:
+        try:
+            diff = sub.difference(prev_roi_img)
+            raw_motion = diff.find_blobs(
+                [(MOTION_THRESHOLD, 255)],
+                pixels_threshold=MOTION_MIN_PIXELS,
+                area_threshold=MOTION_MIN_PIXELS, merge=True
+            )
+            if raw_motion is not None:
+                for b in raw_motion:
+                    if BALL_PX_MIN <= b.pixels() <= BALL_PX_MAX:
+                        motion_candidates.append(
+                            (ox + b.cx(), oy + b.cy(), b.pixels(), b))
+        except Exception:
+            pass
+
+    prev_roi_img = sub
+
+    # ═══════════════════════════════════════════════════════════
     # 三通道投票评分
     # ═══════════════════════════════════════════════════════════
     # 每个候选位置 (candidates pool) 合并三个通道,
     # 按"附近有多少通道同时命中"评分
 
     # 收集所有候选点 (cx, cy, source_mask, extra_info)
-    # source_mask: bit0=非绿色, bit1=暗色, bit2=高光+圆
+    # source_mask: bit0=非绿色, bit1=暗色, bit2=高光+圆, bit3=运动
     all_candidates = []
 
     for (cx, cy, px, b) in not_green_candidates:
@@ -285,6 +321,9 @@ def detect_ball_fusion(img, roi_tuple, ref_cx=None, ref_cy=None):
 
     for (cx, cy, px, b) in dark_candidates:
         all_candidates.append((cx, cy, 2, b, px))
+
+    for (cx, cy, px, b) in motion_candidates:
+        all_candidates.append((cx, cy, 8, b, px))
 
     # 高光+圆: 只在高光靠近圆时才作为通道3候选
     for (hcx, hcy, hpx, hb) in hl_candidates:
@@ -378,6 +417,7 @@ def detect_ball_fusion(img, roi_tuple, ref_cx=None, ref_cy=None):
             print(f"  [DETECT] ng={len(not_green_candidates)} "
                   f"dk={len(dark_candidates)} "
                   f"hl={len(hl_candidates)} cir={len(circle_candidates)} "
+                  f"mo={len(motion_candidates)} "
                   f"→ merged={len(merged)} score={best_score:.1f}")
 
     if best_score > 0 and best_cx is not None:

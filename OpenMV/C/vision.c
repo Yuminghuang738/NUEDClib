@@ -33,7 +33,7 @@
 // ═══════════════════════════════════════════════════════════════
 #define KP_POS               F8(1.8f)  // °/px
 #define KD_POS               F8(18.0f)   // °/(px/frame)
-#define MAX_TILT             F8(10.0f)  // 期望倾角上限
+#define MAX_TILT             F8(9.0f)  // 期望倾角上限
 #define DEAD_ZONE            F8(0.5f)   // 位置死区 (偏差单位, =1像素)
 #define VEL_EMA              F8(0.5f)   // 速度轻平滑 (α=0.5, 滞后≈1帧)
 
@@ -43,7 +43,7 @@
 //   闭环时间常数 τ ≈ 1/K_TILT 秒
 // ═══════════════════════════════════════════════════════════════
 #define K_TILT               F8(10.0f)  // (°/s)/°
-#define ARM_LIMIT            F8(10.0f)  // 臂角硬限位
+#define ARM_LIMIT            F8(9.0f)  // 臂角硬限位
 
 // ── 方向 ──
 #define DIRECTION_INVERT     1
