@@ -11,10 +11,15 @@
 #endif
 
 extern volatile uint32_t sys_tick_ms;
+extern volatile uint32_t encoder_total;
 extern volatile int status;
 
+volatile uint8_t  cross_cnt         = 0;
+volatile uint8_t  reverse_brake_cnt  = 0;
+volatile uint8_t  stop_armed         = 0;   /* 3s 后置 1 */
+
 /* 转向方向翻转开关: 如果左传感器见黑线时车向右转, 改为 -1 */
-#define TRACE_POLARITY    1
+#define TRACE_POLARITY   -1
 
 /* 机械偏航补偿: 车向右偏 → 正值(补右轮); 车向左偏 → 负值(补左轮) */
 //#define RIGHT_BIAS_MM_S   25.0f
@@ -26,8 +31,8 @@ extern volatile int status;
  *  error: trace_get_error() 返回值, 约 -10..+10
  *  turn:  速度修正量 mm/s
  * ═══════════════════════════════════════════════════════════════════════════ */
-float Trace_Kp = 29.0f;
-float Trace_Kd = 3.0f;
+float Trace_Kp = 35.0f;
+float Trace_Kd = 15.0f;
 
 static int8_t  last_pos_error  = 0;
 static int8_t  last_valid_error = 0;   /* 丢线时保持最后有效误差方向 */
@@ -49,13 +54,21 @@ void control_update(void)
         }
     }
 
-    /* 停车状态: 刹车 + 返回 */
+    /* 停车状态: 反向脉冲 → 制动 */
     if (status == 0) {
         Speed_PID_Reset();
-        motor_set_direction(MOTOR_L, MOTOR_STOP);
-        motor_set_direction(MOTOR_R, MOTOR_STOP);
-        motor_set_duty(MOTOR_L, 0);
-        motor_set_duty(MOTOR_R, 0);
+        if (reverse_brake_cnt > 0) {
+            reverse_brake_cnt--;
+            motor_set_direction(MOTOR_L, MOTOR_BACKWARD);
+            motor_set_direction(MOTOR_R, MOTOR_BACKWARD);
+            motor_set_duty(MOTOR_L, 2000);
+            motor_set_duty(MOTOR_R, 2000);
+        } else {
+            motor_set_direction(MOTOR_L, MOTOR_STOP);
+            motor_set_direction(MOTOR_R, MOTOR_STOP);
+            motor_set_duty(MOTOR_L, 4000);
+            motor_set_duty(MOTOR_R, 4000);
+        }
         first_pos_call     = 1;
         last_valid_error   = 0;
         return;
@@ -64,23 +77,33 @@ void control_update(void)
     /* 角度闭环由主循环 Angle_Control_Update 接管, ISR 不干预 */
     if (status == 2) return;
 
-    trace_read();
-    int8_t  error  = trace_get_error();
-    uint8_t active = trace_get_active();
-
-    if (active == 0) {
-        Speed_PID_Reset();
+    /* 任务3: 静止球位置控制 (车不动, 只控摆杆) */
+    if (status == 4) {
         motor_set_direction(MOTOR_L, MOTOR_STOP);
         motor_set_direction(MOTOR_R, MOTOR_STOP);
         motor_set_duty(MOTOR_L, 0);
         motor_set_duty(MOTOR_R, 0);
-        control_variant_reset();
-        first_pos_call   = 1;
-        last_valid_error = 0;
+        ball_pid_update();
         return;
     }
 
-    if (active == 4) {
+    trace_read();
+
+    /* X7 停止线检测 — ISR 内同步 + 里程门禁过滤弯道误触发 */
+    if (status == 1 && trace_data[5] == 1 && encoder_total > 10000) {
+        status = 0;
+        reverse_brake_cnt = 0;   /* 立即硬刹车，不反转 */
+    }
+
+    int8_t  error  = trace_get_error();
+    uint8_t active = trace_get_active();
+
+    if (active == 0) {
+        error = last_valid_error;
+        first_pos_call = 1;
+    }
+
+    if (active >= 5) {
         error = last_valid_error;
     } else {
         last_valid_error = error;
@@ -88,22 +111,31 @@ void control_update(void)
 
     error = (int8_t)((int16_t)error * TRACE_POLARITY);
 
+    /* 任务5/6 (status==3) 用平顺参数, 任务2用快速参数 */
+    float kp   = (status == 3) ? BALL_TRACE_KP   : Trace_Kp;
+    float kd   = (status == 3) ? BALL_TRACE_KD   : Trace_Kd;
+    float base = (status == 3) ? BALL_BASE_SPEED : Base_Speed_mm_s;
+
     float turn;
     if (first_pos_call) {
-        turn = Trace_Kp * (float)error;
+        turn = kp * (float)error;
         first_pos_call = 0;
     } else {
-        turn = Trace_Kp * (float)error
-             + Trace_Kd * (float)(error - last_pos_error);
+        turn = kp * (float)error
+             + kd * (float)(error - last_pos_error);
     }
     last_pos_error = error;
 
-    float target_l = Base_Speed_mm_s - turn;
-    float target_r = Base_Speed_mm_s + turn;
-    if (target_l < 30.0f) target_l = 100.0f;
-    if (target_r < 30.0f) target_r = 100.0f;
+    float target_l = base - turn;
+    float target_r = base + turn;
+    if (target_l < 30.0f) target_l = 30.0f;
+    if (target_r < 30.0f) target_r = 30.0f;
 
     Speed_PID_Update(target_l, target_r);
+
+    if (status == 3) {
+        ball_pid_update();
+    }
 }
 
 void PID_INST_IRQHandler(void)

@@ -2,23 +2,31 @@
 
 volatile uint32_t counter_1_A = 0;
 volatile uint32_t counter_2_A = 0;
-
-volatile uint8_t key_start_flag  = 0;
-volatile uint8_t key_mode_trace   = 0;
-volatile uint8_t key_mode_angle   = 0;
-volatile uint8_t key_stop_flag    = 0;
-
-extern volatile int status;
+volatile uint32_t encoder_total = 0;   /* 累计编码脉冲, 停止里程门禁 */
+volatile uint8_t  key_start_flag = 0;
+volatile uint8_t  key_task3_flag = 0;
+volatile uint8_t  key_task456_flag = 0;
 
 void GROUP1_IRQHandler(void)
 {
     uint32_t iidx;
 
-    /* 处理 GPIOA 全部挂起源 */
-    while ((iidx = DL_GPIO_getPendingInterrupt(GPIOA)) != 0) {
+    while ((iidx = DL_GPIO_getPendingInterrupt(GPIOB)) != 0) {
         switch (iidx) {
-            case KEY_KEY_3_IIDX:
-                key_mode_angle = 1;   /* 选定角度模式 */
+            case Motor_l_E1A_IIDX:
+                counter_1_A++;
+                break;
+            case Motor_2_E2A_IIDX:
+                counter_2_A++;
+                break;
+            case KEY_KEY_1_IIDX:
+                key_start_flag = 1;
+                break;
+            case KEY_KEY_2_IIDX:
+                key_task3_flag = 1;
+                break;
+            case KEY_KEY_4_IIDX:
+                key_task456_flag = 1;
                 break;
             default:
                 break;
@@ -49,4 +57,5 @@ void GROUP1_IRQHandler(void)
         }
         DL_GPIO_clearInterruptStatus(GPIOB, (1UL << iidx));
     }
+        DL_GPIO_clearInterruptStatus(GPIOB, (1UL << iidx));
 }

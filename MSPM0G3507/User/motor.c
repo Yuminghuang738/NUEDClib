@@ -85,9 +85,9 @@ void motor_set_direction(uint8_t motor_id, uint8_t direction)
                 break;
 
             case MOTOR_STOP:
-            default:    /* stop     */
-                DL_GPIO_clearPins(Motor_l_AIN1_PORT, Motor_l_AIN1_PIN);
-                DL_GPIO_clearPins(Motor_l_AIN2_PORT, Motor_l_AIN2_PIN);
+            default:    /* brake (short motor terminals) */
+                DL_GPIO_setPins(Motor_l_AIN1_PORT, Motor_l_AIN1_PIN);
+                DL_GPIO_setPins(Motor_l_AIN2_PORT, Motor_l_AIN2_PIN);
                 break;
         }
     }
@@ -106,9 +106,9 @@ void motor_set_direction(uint8_t motor_id, uint8_t direction)
                 break;
 
             case MOTOR_STOP:
-            default:    /* stop     */
-                DL_GPIO_clearPins(Motor_2_PORT, Motor_2_BIN1_PIN);
-                DL_GPIO_clearPins(Motor_2_PORT, Motor_2_BIN2_PIN);
+            default:    /* brake (short motor terminals) */
+                DL_GPIO_setPins(Motor_2_PORT, Motor_2_BIN1_PIN);
+                DL_GPIO_setPins(Motor_2_PORT, Motor_2_BIN2_PIN);
                 break;
         }
     }
@@ -129,6 +129,7 @@ int32_t motor_read_encoder(uint8_t motor_id)
     if (motor_id == MOTOR_L)
     {
         count = counter_1_A;
+        encoder_total += count;
         counter_1_A = 0;
     }
     else  /* MOTOR_R */
