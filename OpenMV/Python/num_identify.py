@@ -1,27 +1,18 @@
+"""
+Handwritten digit recognition for OpenMV.
+
+Assumption: dark digit on light background (pen on paper).
+MNIST format: white digit (255) on black background (0).
+"""
 import sensor
+import image
 import time
-import struct
-import tf
-from machine import UART
-from machine import LED
-
-# ── UART init ──
-uart = UART(1, 115200)
-uart.init(115200, bits=8, parity=None, stop=1)
-
-# ── Debug switch ──
-DEBUG = True
-
-# ── Digit detection params ──
-MODEL_PATH   = "num_identify.tflite"
-IMG_SIZE     = 28            # model input is 28x28
-THRESHOLD    = (128, 255)    # white digits on dark background
-MIN_PIXELS   = 80            # min blob size for a digit candidate
+import ml
 
 # ── Sensor setup ──
 sensor.reset()
 sensor.set_pixformat(sensor.GRAYSCALE)
-sensor.set_framesize(sensor.QQVGA)          # 160 x 120
+sensor.set_framesize(sensor.QVGA)             # 320 x 240
 sensor.set_auto_gain(False)
 sensor.set_auto_whitebal(False)
 sensor.set_auto_exposure(False, exposure_us=25000)
@@ -29,81 +20,94 @@ sensor.skip_frames(time=2000)
 
 clock = time.clock()
 
-green = LED("LED_GREEN")
-red   = LED("LED_RED")
-red.on()
+# ── Load model ──
+# NO load_to_fb — we pass the 28×28 ROI directly to avoid stride mismatch
+MODEL_PATH = "num_identify.tflite"
+net = ml.Model(MODEL_PATH)
 
-# ── Load TFLite model (load_to_fb=True maps model I/O to frame buffer RAM) ──
-net = tf.load(MODEL_PATH, load_to_fb=True)
+# ── Tunable constants ──
+THRESH_FRAC  = 0.70   # fraction of 60th-percentile used as dark/light cutoff
+MIN_BLOB_PX  = 50     # ignore blobs smaller than this
+ROI_PAD      = 0.20   # expand ROI by 20 % for MNIST-style margin
+
+print("Ready. Show a dark digit on light background.")
 
 while True:
     clock.tick()
     img = sensor.snapshot()
 
-    # Find the largest bright blob as digit candidate
-    blobs = img.find_blobs([THRESHOLD], pixels_threshold=MIN_PIXELS, merge=True)
+    # ── 1. Adaptive threshold from frame histogram ──
+    hist = img.get_histogram()
+    hist_stats = hist.statistics()         # (mean, median, mode, stdev, ...)
+    bg_ref  = hist_stats[1]                 # median — roughly the paper brightness        # roughly the paper brightness
+    thresh = int(bg_ref * THRESH_FRAC)
+    thresh = max(60, min(180, thresh))        # clamp to safe range
 
-    largest_blob = None
+    # ── 2. Find the largest dark blob (the digit) ──
+    blobs = img.find_blobs([(0, thresh)], pixels_threshold=MIN_BLOB_PX, merge=True)
+
     if blobs:
-        largest_blob = max(blobs, key=lambda b: b.pixels())
+        largest = max(blobs, key=lambda b: b.pixels())
+        r = largest.rect()                    # (x, y, w, h)
 
-    predicted_digit = None
-    nn_confidence   = 0.0
+        # ── 3. Expand ROI with padding ──
+        pw = int(r[2] * ROI_PAD)
+        ph = int(r[3] * ROI_PAD)
+        rx = max(0, r[0] - pw)
+        ry = max(0, r[1] - ph)
+        rw = min(img.width()  - rx, r[2] + 2 * pw)
+        rh = min(img.height() - ry, r[3] + 2 * ph)
 
-    if largest_blob is not None:
-        # Crop, scale, and apply adaptive threshold
-        roi = img.crop(largest_blob.rect(), copy=True)
-        roi_scaled = roi.resize(IMG_SIZE, IMG_SIZE)
+        # ── 4. Crop → scale to 28×28 → binary ──
+        roi = img.copy(roi=(rx, ry, rw, rh))
+        roi = roi.copy(x_scale=28.0 / rw, y_scale=28.0 / rh,
+                       hint=image.BILINEAR)
 
-        # Mean adaptive threshold for robust binarisation
-        roi_bin = roi_scaled.mean(2).binary([(0, 128)], invert=False)
+        # Recompute threshold on ROI for better foreground / background split
+        roi_hist = roi.get_histogram()
+        roi_hist_stats = roi_hist.statistics()
+        roi_bg  = roi_hist_stats[1]
+        roi_thresh = int(roi_bg * 0.70)
+        roi_thresh = max(40, min(160, roi_thresh))
 
-        # Write preprocessed digit into frame buffer at (0,0)
-        img.draw_image(roi_bin, 0, 0)
+        # invert=False: pixels in [0, thresh] → 255 (white digit),
+        #               pixels outside       → 0   (black bg)
+        # → white-digit-on-black-bg = MNIST format
+        roi.binary([(0, roi_thresh)], invert=False)
 
-        # Classify
-        results = net.classify(img)
+        # ── 5. Morphological CLOSE — dilate then erode fills gaps in strokes ──
+        roi.dilate(1, threshold=128)
+        roi.erode(1, threshold=128)
+
+        # ── 6. Predict directly from ROI (no draw_image, no stride issues) ──
+        results = net.predict([roi])
+
         if results:
-            predicted_digit = results[0].output()
-            nn_confidence   = results[0].value()
+            row = results[0][0]
+            best_idx = 0
+            best_val = row[0]
+            for i in range(1, 10):
+                if row[i] > best_val:
+                    best_val = row[i]
+                    best_idx = i
 
-        offset_x = largest_blob.cx() - img.width() // 2
-        offset_y = largest_blob.cy() - img.height() // 2
+            # ── Diagnostic output ──
+            prob_str = " ".join(["%d:%.2f" % (i, row[i]) for i in range(10)])
+
+            roi_stats = roi.get_histogram().statistics()
+            # statistics() → (mean, median, mode, stdev, min, max, lq, uq)
+
+            print("─" * 50)
+            print("Probs: %s" % prob_str)
+            print("-> Digit: %d  (conf: %.2f)  FPS: %.1f"
+                  % (best_idx, best_val, clock.fps()))
+            print("  ROI px [min:%d max:%d mean:%d]  thresh:%d/%d"
+                  % (roi_stats[4], roi_stats[5], int(roi_stats[0]),
+                     thresh, roi_thresh))
+
+            img.draw_string(largest.cx(), largest.cy() + r[3] // 2 + 10,
+                            str(best_idx), color=255, scale=3)
+            img.draw_rectangle(r, color=255)
     else:
-        offset_x   = 0
-        offset_y   = 0
-
-    # ── Build status ──
-    if largest_blob is not None and predicted_digit is not None:
-        data_valid = 1
-
-        # Map NN confidence to 1..3
-        if nn_confidence > 0.9:
-            confidence = 3
-        elif nn_confidence > 0.6:
-            confidence = 2
-        else:
-            confidence = 1
-    else:
-        data_valid = 0
-        confidence = 0
-
-    # ── Pack and send 5-byte frame ──
-    status = (data_valid << 0) | (confidence << 1)
-
-    data = struct.pack("<BBbbB", 0xAA, status, offset_x, offset_y, 0xBB)
-
-    if DEBUG:
-        byte_sent = uart.write(data)
-        if predicted_digit is not None:
-            print(f"Digit: {predicted_digit}  NN conf: {nn_confidence:.3f}")
-        else:
-            print("Digit: N/A")
-        print(f"Status: 0x{status:02X} valid={data_valid} conf={confidence}")
-        print(f"Offset X: {offset_x}  Y: {offset_y}")
-        print(f"FPS: {clock.fps()}")
-        print(f"Sent Num: {byte_sent}")
-    else:
-        uart.write(data)
-        red.off()
-        green.toggle()
+        if clock.fps() < 1:
+            print(".", end="")

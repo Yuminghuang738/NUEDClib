@@ -163,6 +163,7 @@ I2C1.advControllerRXFIFOTRIG           = "BYTES_8";
 I2C1.advControllerTXFIFOTRIG           = "BYTES_7";
 I2C1.enableDMAEvent1                   = false;
 I2C1.enableDMAEvent2                   = false;
+I2C1.basicControllerStandardBusSpeed   = "Fast";
 I2C1.peripheral.$assign                = "I2C1";
 I2C1.peripheral.sdaPin.$assign         = "PB3";
 I2C1.peripheral.sclPin.$assign         = "PB2";
@@ -186,11 +187,11 @@ PWM1.clockPrescale                      = 2;
 PWM1.timerCount                         = 4000;
 PWM1.pwmMode                            = "EDGE_ALIGN_UP";
 PWM1.PWM_CHANNEL_0.$name                = "ti_driverlib_pwm_PWMTimerCC0";
-PWM1.ccp0PinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric4";
 PWM1.ccp0PinConfig.direction            = scripting.forceWrite("OUTPUT");
 PWM1.ccp0PinConfig.hideOutputInversion  = scripting.forceWrite(false);
 PWM1.ccp0PinConfig.onlyInternalResistor = scripting.forceWrite(false);
 PWM1.ccp0PinConfig.passedPeripheralType = scripting.forceWrite("Digital");
+PWM1.ccp0PinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric4";
 PWM1.peripheral.$assign                 = "TIMG7";
 PWM1.peripheral.ccp0Pin.$assign         = "PA28";
 
@@ -236,11 +237,11 @@ PWM4.interrupts                         = ["LOAD_EVENT"];
 PWM4.PWM_CHANNEL_0.$name                = "ti_driverlib_pwm_PWMTimerCC4";
 PWM4.PWM_CHANNEL_0.ccValue              = 5000;
 PWM4.PWM_CHANNEL_0.dutyCycle            = 50;
+PWM4.ccp0PinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric8";
 PWM4.ccp0PinConfig.direction            = scripting.forceWrite("OUTPUT");
 PWM4.ccp0PinConfig.hideOutputInversion  = scripting.forceWrite(false);
 PWM4.ccp0PinConfig.onlyInternalResistor = scripting.forceWrite(false);
 PWM4.ccp0PinConfig.passedPeripheralType = scripting.forceWrite("Digital");
-PWM4.ccp0PinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric8";
 PWM4.peripheral.$assign                 = "TIMG8";
 PWM4.peripheral.ccp0Pin.$assign         = "PB21";
 
@@ -283,15 +284,15 @@ UART2.enableFIFO                       = true;
 UART2.peripheral.$assign               = "UART1";
 UART2.peripheral.rxPin.$assign         = "PA9";
 UART2.peripheral.txPin.$assign         = "PA8";
+UART2.txPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric12";
 UART2.txPinConfig.direction            = scripting.forceWrite("OUTPUT");
 UART2.txPinConfig.hideOutputInversion  = scripting.forceWrite(false);
 UART2.txPinConfig.onlyInternalResistor = scripting.forceWrite(false);
 UART2.txPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
-UART2.txPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric12";
+UART2.rxPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric13";
 UART2.rxPinConfig.hideOutputInversion  = scripting.forceWrite(false);
 UART2.rxPinConfig.onlyInternalResistor = scripting.forceWrite(false);
 UART2.rxPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
-UART2.rxPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric13";
 
 /**
  * Pinmux solution for unlocked pins/peripherals. This ensures that minor changes to the automatic solver in a future
