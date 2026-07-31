@@ -13,6 +13,7 @@
 extern volatile uint32_t sys_tick_ms;
 extern volatile uint32_t encoder_total;
 extern volatile int status;
+extern volatile uint8_t nostop_mode;
 
 volatile uint8_t  cross_cnt         = 0;
 volatile uint8_t  reverse_brake_cnt  = 0;
@@ -46,14 +47,6 @@ void control_init(void)
 
 void control_update(void)
 {
-    if (angle_ctrl_active) {
-        if (sys_tick_ms - last_angle_ctrl_ms > 100) {
-            angle_ctrl_active = 0;
-        } else {
-            return;
-        }
-    }
-
     /* 停车状态: 反向脉冲 → 制动 */
     if (status == 0) {
         Speed_PID_Reset();
@@ -74,25 +67,12 @@ void control_update(void)
         return;
     }
 
-    /* 角度闭环由主循环 Angle_Control_Update 接管, ISR 不干预 */
-    if (status == 2) return;
-
-    /* 任务3: 静止球位置控制 (车不动, 只控摆杆) */
-    if (status == 4) {
-        motor_set_direction(MOTOR_L, MOTOR_STOP);
-        motor_set_direction(MOTOR_R, MOTOR_STOP);
-        motor_set_duty(MOTOR_L, 0);
-        motor_set_duty(MOTOR_R, 0);
-        ball_pid_update();
-        return;
-    }
-
     trace_read();
 
-    /* X7 停止线检测 — ISR 内同步 + 里程门禁过滤弯道误触发 */
-    if (status == 1 && trace_data[5] == 1 && encoder_total > 10000) {
+    /* X7 停止线检测 — ISR 内同步 + 里程门禁 + 不停车模式跳过 */
+    if (!nostop_mode && status == 1 && trace_data[5] == 1 && encoder_total > 10000) {
         status = 0;
-        reverse_brake_cnt = 0;   /* 立即硬刹车，不反转 */
+        reverse_brake_cnt = 0;
     }
 
     int8_t  error  = trace_get_error();
@@ -111,31 +91,22 @@ void control_update(void)
 
     error = (int8_t)((int16_t)error * TRACE_POLARITY);
 
-    /* 任务5/6 (status==3) 用平顺参数, 任务2用快速参数 */
-    float kp   = (status == 3) ? BALL_TRACE_KP   : Trace_Kp;
-    float kd   = (status == 3) ? BALL_TRACE_KD   : Trace_Kd;
-    float base = (status == 3) ? BALL_BASE_SPEED : Base_Speed_mm_s;
-
     float turn;
     if (first_pos_call) {
-        turn = kp * (float)error;
+        turn = Trace_Kp * (float)error;
         first_pos_call = 0;
     } else {
-        turn = kp * (float)error
-             + kd * (float)(error - last_pos_error);
+        turn = Trace_Kp * (float)error
+             + Trace_Kd * (float)(error - last_pos_error);
     }
     last_pos_error = error;
 
-    float target_l = base - turn;
-    float target_r = base + turn;
+    float target_l = Base_Speed_mm_s - turn;
+    float target_r = Base_Speed_mm_s + turn;
     if (target_l < 30.0f) target_l = 30.0f;
     if (target_r < 30.0f) target_r = 30.0f;
 
     Speed_PID_Update(target_l, target_r);
-
-    if (status == 3) {
-        ball_pid_update();
-    }
 }
 
 void PID_INST_IRQHandler(void)
