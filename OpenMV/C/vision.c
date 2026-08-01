@@ -31,9 +31,9 @@
 //   KP_POS: 1px 偏差 → 多少度倾角  (范围 0.1~0.5)
 //   KD_POS: 1px/帧 球速 → 减多少度倾角 (阻尼, 范围 KP/4 ~ KP*2)
 // ═══════════════════════════════════════════════════════════════
-#define KP_POS               F8(1.2f)  // °/px
-#define KD_POS               F8(15.0f)   // °/(px/frame)
-#define MAX_TILT             F8(3.0f)  // 期望倾角上限
+#define KP_POS               F8(1.0f)  // °/px
+#define KD_POS               F8(14.0f)   // °/(px/frame)
+#define MAX_TILT             F8(0.8f)  // 期望倾角上限
 #define DEAD_ZONE            F8(2.0f)   // 位置死区 (偏差单位, =1像素)
 #define VEL_EMA              F8(0.5f)   // 速度轻平滑 (α=0.5, 滞后≈1帧)
 
@@ -42,8 +42,8 @@
 //   K_TILT: 1° 倾角误差 → 多少 °/s 电机 (范围 5~20)
 //   闭环时间常数 τ ≈ 1/K_TILT 秒
 // ═══════════════════════════════════════════════════════════════
-#define K_TILT               F8(25.0f)  // (°/s)/°
-#define ARM_LIMIT            F8(2.0f)  // 臂角硬限位
+#define K_TILT               F8(30.0f)  // (°/s)/°
+#define ARM_LIMIT            F8(0.8f)  // 臂角硬限位
 
 // ── 方向 ──
 #define DIRECTION_INVERT     1
@@ -220,7 +220,7 @@ void process_deviation(void)
   #define T3_TILT_POS     F8(5.0f)      // +5° → 球到 +5cm
   #define T3_TILT_BRAKE   F8(0.0f)   // 0° → 刹车减速
   #define T3_TILT_NEG     F8(-1.0f)  // -4° → 球折返到 -5cm
-  #define T3_TILT_HOLD    F8(-3.5f)     // -5° → 稳定
+  #define T3_TILT_HOLD    F8(-3.0f)     // -5° → 稳定
   #define T3_TIME_POS     1500
   #define T3_TIME_BRAKE   500        // 刹车 0.5s
   #define T3_TIME_NEG     1200       // 反转 1.2s
