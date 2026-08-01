@@ -31,10 +31,10 @@
 //   KP_POS: 1px 偏差 → 多少度倾角  (范围 0.1~0.5)
 //   KD_POS: 1px/帧 球速 → 减多少度倾角 (阻尼, 范围 KP/4 ~ KP*2)
 // ═══════════════════════════════════════════════════════════════
-#define KP_POS               F8(2.0f)  // °/px
-#define KD_POS               F8(18.0f)   // °/(px/frame)
-#define MAX_TILT             F8(10.0f)  // 期望倾角上限
-#define DEAD_ZONE            F8(0.5f)   // 位置死区 (偏差单位, =1像素)
+#define KP_POS               F8(1.2f)  // °/px
+#define KD_POS               F8(15.0f)   // °/(px/frame)
+#define MAX_TILT             F8(3.0f)  // 期望倾角上限
+#define DEAD_ZONE            F8(2.0f)   // 位置死区 (偏差单位, =1像素)
 #define VEL_EMA              F8(0.5f)   // 速度轻平滑 (α=0.5, 滞后≈1帧)
 
 // ═══════════════════════════════════════════════════════════════
@@ -42,13 +42,19 @@
 //   K_TILT: 1° 倾角误差 → 多少 °/s 电机 (范围 5~20)
 //   闭环时间常数 τ ≈ 1/K_TILT 秒
 // ═══════════════════════════════════════════════════════════════
-#define K_TILT               F8(10.0f)  // (°/s)/°
-#define ARM_LIMIT            F8(10.0f)  // 臂角硬限位
+#define K_TILT               F8(25.0f)  // (°/s)/°
+#define ARM_LIMIT            F8(2.0f)  // 臂角硬限位
 
 // ── 方向 ──
 #define DIRECTION_INVERT     1
 
 extern volatile uint32_t sys_tick_ms;
+
+// ── 任务三调试变量 ──
+volatile int16_t  dbg_t3_desired = 0;
+volatile int16_t  dbg_t3_current = 0;
+volatile int8_t   dbg_t3_dir     = 0;
+volatile uint8_t  dbg_t3_state   = 0;
 
 // ── 状态 ──
 static bool     frame_received = false;
@@ -207,65 +213,78 @@ void process_deviation(void)
 
 
 // ═══════════════════════════════════════════════════════════════
-// 任务三: 定时开环序列 — 正转12° → -9° → 水平(3s) → -5°
-//   不依赖视觉, 纯时间驱动倾角
+// 任务三 状态机: 正转(+5cm) → 折返 → 反转(-5cm) → 稳定
+//   纯时间驱动倾角, 不依赖视觉反馈
 // ═══════════════════════════════════════════════════════════════
-#define T3_TILT_POS     F8(12.0f)     // +12°
-#define T3_TILT_NEG     F8(-9.0f)     // -9°
-#define T3_TILT_LEVEL   F8(0.0f)      // 水平
-#define T3_TILT_NEG2    F8(-5.0f)     // -5°
-#define T3_T1_MS        1500           // +12° → -9° 切换点
-#define T3_T2_MS        1900           // -9° → 0° 切换点
-#define T3_T3_MS        3140           // 水平 3s 后 → -5°
+  #define T3_ARM_LIMIT    F8(10.0f)
+  #define T3_TILT_POS     F8(5.0f)      // +5° → 球到 +5cm
+  #define T3_TILT_BRAKE   F8(0.0f)   // 0° → 刹车减速
+  #define T3_TILT_NEG     F8(-1.0f)  // -4° → 球折返到 -5cm
+  #define T3_TILT_HOLD    F8(-3.5f)     // -5° → 稳定
+  #define T3_TIME_POS     1500
+  #define T3_TIME_BRAKE   500        // 刹车 0.5s
+  #define T3_TIME_NEG     1200       // 反转 1.2s
 
+enum { T3_INIT, T3_TO_POS, T3_BRAKE, T3_TO_NEG, T3_HOLD, T3_DONE };
 void process_deviation_task3(void)
 {
-    static uint32_t t3_start_ms  = 0;
+    static uint8_t  t3_state     = T3_INIT;
+    static uint32_t t3_enter_ms  = 0;
     static uint32_t t3_last_ctrl = 0;
-    static int16_t  t3_desired   = 0;       // Q8.8 期望倾角
     static int16_t  t3_current   = 0;       // Q8.8 臂角积分
-    static uint8_t  t3_state     = 0;       // 0=init,1=+10°,2=-20°,3=level
 
-    // ── 1. 状态机: 纯时间驱动 ──
-    if (t3_state == 0)
-    {
-        t3_start_ms = sys_tick_ms;
-        t3_state    = 1;
-    }
-
-    uint32_t elapsed = sys_tick_ms - t3_start_ms;
-
-    if (elapsed < T3_T1_MS)
-        t3_desired = T3_TILT_POS;           // 0~1.5s: +12°
-    else if (elapsed < T3_T2_MS)
-        t3_desired = T3_TILT_NEG;           // 1.5~1.9s: -9°
-    else if (elapsed < T3_T3_MS)
-        t3_desired = T3_TILT_LEVEL;         // 1.9~4.9s: 水平 (3秒)
-    else
-        t3_desired = T3_TILT_NEG2;          // 4.9s+: -2°
-
-    // ── 2. 超时保护 (OpenMV 断联时也继续工作) ──
-    {
-        uint8_t dummy_status; int8_t dummy_x, dummy_y;
-        static uint32_t last_frame = 0;
-        static bool got_frame = false;
-        if (UART_get_deviations(&dummy_status, &dummy_x, &dummy_y))
-            { last_frame = sys_tick_ms; got_frame = true; }
-        if (got_frame && (sys_tick_ms - last_frame) > TIMEOUT_MS)
-        {
-            gimbal_motor_stop(GIMBAL_MOTOR_R);
-            t3_current = 0;
-            t3_state   = 0;
-            return;
-        }
-    }
-
-    // ── 3. 100Hz ──
+    // ── 1. 100Hz ──
     if (sys_tick_ms - t3_last_ctrl < CTRL_PERIOD_MS)
         return;
     t3_last_ctrl = sys_tick_ms;
 
-    // ── 4. 内层: 倾角跟踪 ──
+    // ── 2. 状态机 ──
+    int16_t t3_desired;
+
+    switch (t3_state) 
+{
+  case T3_INIT:
+      t3_enter_ms = sys_tick_ms;
+      t3_current  = 0;
+      t3_state    = T3_TO_POS;
+      // fall through
+  case T3_TO_POS:
+      t3_desired = T3_TILT_POS;
+      dbg_t3_state = 1;
+      if (sys_tick_ms - t3_enter_ms >= T3_TIME_POS) {
+          t3_enter_ms = sys_tick_ms;
+          t3_state    = T3_BRAKE;
+      }
+      break;
+  case T3_BRAKE:
+      t3_desired = T3_TILT_BRAKE;
+      dbg_t3_state = 2;
+      if (sys_tick_ms - t3_enter_ms >= T3_TIME_BRAKE) {
+          t3_enter_ms = sys_tick_ms;
+          t3_state    = T3_TO_NEG;
+      }
+      break;
+  case T3_TO_NEG:
+      t3_desired = T3_TILT_NEG;
+      dbg_t3_state = 3;
+      if (sys_tick_ms - t3_enter_ms >= T3_TIME_NEG) {
+          t3_enter_ms = sys_tick_ms;
+          t3_state    = T3_HOLD;
+      }
+      break;
+  case T3_HOLD:
+      t3_desired = T3_TILT_HOLD;
+      dbg_t3_state = 4;
+      break;
+  default:
+      gimbal_motor_stop(GIMBAL_MOTOR_R);
+      dbg_t3_dir = 0;
+      return;
+}
+    dbg_t3_desired = t3_desired;
+    dbg_t3_current = t3_current;
+
+    // ── 3. 内层: 倾角跟踪 ──
     int16_t tilt_error = t3_desired - t3_current;
     int32_t motor_speed = ((int32_t)K_TILT * (int32_t)tilt_error) >> 8;
 
@@ -273,18 +292,20 @@ void process_deviation_task3(void)
     int32_t abs_speed = (motor_speed > 0) ? motor_speed : -motor_speed;
     dir_sign *= DIRECTION_INVERT;
 
-    // ── 5. 臂角积分 ──
+    dbg_t3_dir = (int8_t)dir_sign;
+
+    // ── 4. 臂角积分 ──
     {
         int32_t deg_per_s = (abs_speed + 128) >> 8;
         t3_current += (int16_t)(((deg_per_s * 256 + 50) / 100) * dir_sign);
     }
-    if (t3_current > ARM_LIMIT)
-    { gimbal_motor_stop(GIMBAL_MOTOR_R); t3_current = ARM_LIMIT; return; }
-    if (t3_current < -ARM_LIMIT)
-    { gimbal_motor_stop(GIMBAL_MOTOR_R); t3_current = -ARM_LIMIT; return; }
+    if (t3_current > T3_ARM_LIMIT)
+    { gimbal_motor_stop(GIMBAL_MOTOR_R); t3_current = T3_ARM_LIMIT; dbg_t3_dir = 0; return; }
+    if (t3_current < -T3_ARM_LIMIT)
+    { gimbal_motor_stop(GIMBAL_MOTOR_R); t3_current = -T3_ARM_LIMIT; dbg_t3_dir = 0; return; }
 
-    // ── 6. 驱动 ──
-    if (abs_speed < F8(0.5f)) { gimbal_motor_stop(GIMBAL_MOTOR_R); return; }
+    // ── 5. 驱动 ──
+    if (abs_speed < F8(0.5f)) { gimbal_motor_stop(GIMBAL_MOTOR_R); dbg_t3_dir = 0; return; }
     if (dir_sign > 0)
         gimbal_motor_set_dir(GIMBAL_MOTOR_R, GIMBAL_MOTOR_DIRECTION_FORWARD);
     else
