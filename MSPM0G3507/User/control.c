@@ -52,6 +52,17 @@ void control_init(void)
 
 void control_update(void)
 {
+    /* 视觉模式: 车静止 */
+    if (status == 4) {
+        motor_set_direction(MOTOR_L, MOTOR_STOP);
+        motor_set_direction(MOTOR_R, MOTOR_STOP);
+        motor_set_duty(MOTOR_L, 4000);
+        motor_set_duty(MOTOR_R, 4000);
+        first_pos_call     = 1;
+        last_valid_error   = 0;
+        return;
+    }
+
     /* 停车状态: 反向脉冲 → 制动 */
     if (status == 0) {
         Speed_PID_Reset();

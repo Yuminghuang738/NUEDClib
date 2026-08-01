@@ -40,7 +40,7 @@ int main(void)
     gimbal_motor_init(GIMBAL_MOTOR_L);
     gimbal_motor_init(GIMBAL_MOTOR_R);
 
-    /* KEY_1=循迹, KEY_3=任务三, KEY_4=不停车循迹 */
+    /* KEY_1=循迹停车, KEY_2=任务三, KEY_3=任务三, KEY_4=循迹+平衡 */
     DL_GPIO_enableInterrupt(GPIOA, KEY_KEY_3_PIN);
     NVIC_EnableIRQ(KEY_GPIOA_INT_IRQN);
 
@@ -52,8 +52,9 @@ int main(void)
     motor_set_direction(MOTOR_R, MOTOR_FORWARD);
 
     enum { MODE_IDLE, MODE_TRACE, MODE_VISION };
-    int run_mode = MODE_VISION;
+    int run_mode = MODE_IDLE;
     bool task3_active = false;
+    bool balance_enabled = false;
 
     /* ── 循迹状态 ── */
     enum { TR_IDLE, WAIT_START, CROSS_SEEN, RUNNING, FINISHED };
@@ -84,9 +85,17 @@ int main(void)
             }
             if (key_nostop_flag) {
                 key_nostop_flag = 0;
+                run_mode = MODE_VISION;
+                task3_active = true;
+                status = 4;
+                gimbal_motor_stop(GIMBAL_MOTOR_R);
+            }
+            if (key_vision_flag) {
+                key_vision_flag = 0;
                 run_mode = MODE_TRACE;
                 status = 1;
                 nostop_mode = 1;
+                balance_enabled = 1;
                 Speed_PID_Reset();
                 DL_GPIO_clearInterruptStatus(GPIOB, Motor_l_E1A_PIN | Motor_2_E2A_PIN);
                 DL_GPIO_enableInterrupt(GPIOB, Motor_l_E1A_PIN | Motor_2_E2A_PIN);
@@ -95,6 +104,13 @@ int main(void)
                 encoder_total = 0;
                 tr_state = WAIT_START;
                 stop_armed = 0;
+            }
+            if (key_angle_flag) {
+                key_angle_flag = 0;
+                run_mode = MODE_VISION;
+                task3_active = true;
+                status = 4;
+                gimbal_motor_stop(GIMBAL_MOTOR_R);
             }
 
             trace_read();
@@ -150,6 +166,21 @@ int main(void)
                 break;
             }
 
+            /* KEY_4: 停止循迹+平衡, 返回 IDLE */
+            if (key_vision_flag) {
+                key_vision_flag = 0;
+                status = 0;
+                nostop_mode = 0;
+                balance_enabled = 0;
+                gimbal_motor_stop(GIMBAL_MOTOR_R);
+                run_mode = MODE_IDLE;
+                continue;
+            }
+
+            /* 不停车模式运行平衡 */
+            if (balance_enabled)
+                process_deviation();
+
             char buf[24];
             if (tr_state == FINISHED) {
                 sprintf(buf, "TIME:%2d.%02d s       ",
@@ -158,29 +189,39 @@ int main(void)
             } else if (tr_state == WAIT_START) {
                 OLED_ShowString(0, 0, (uint8_t *)"READY           ", 16);
             } else {
-                sprintf(buf, "T:%2d.%02d E:%lu %s",
+                sprintf(buf, "T:%2d.%02d E:%lu %s%s",
                         (int)((sys_tick_ms - start_time) / 1000),
                         (int)(((sys_tick_ms - start_time) % 1000) / 10),
                         encoder_total,
-                        nostop_mode ? "NS" : "R ");
+                        nostop_mode ? "NS" : "R ",
+                        balance_enabled ? " BAL" : "");
                 OLED_ShowString(0, 0, (uint8_t *)buf, 16);
             }
         }
 
         /* ═══════════════════════════════════════════════════════
-         *  视觉平衡模式 — KEY_3 切换任务三
+         *  视觉模式 — 任务三 / 视觉平衡
          * ═══════════════════════════════════════════════════════ */
         if (run_mode == MODE_VISION)
         {
-            if (key_angle_flag) {
-                key_angle_flag = 0;
-                task3_active = !task3_active;
-            }
-
             if (task3_active)
                 process_deviation_task3();
             else
                 process_deviation();
+
+            char buf[24];
+            if (task3_active) {
+                /* 调试: S=状态 D=期望角 C=当前角 →=方向 */
+                int d = (int)((dbg_t3_desired + 128) >> 8);
+                int c = (int)((dbg_t3_current + 128) >> 8);
+                char dir_c = (dbg_t3_dir > 0) ? 'F' : ((dbg_t3_dir < 0) ? 'R' : 'S');
+                sprintf(buf, "S%d D:%+3d C:%+3d %c",
+                        dbg_t3_state, d, c, dir_c);
+                OLED_ShowString(0, 0, (uint8_t *)buf, 16);
+            } else {
+                sprintf(buf, "VISION BAL");
+                OLED_ShowString(0, 0, (uint8_t *)buf, 16);
+            }
         }
 
         if (sys_tick_ms - last_oled >= 50) {
