@@ -38,11 +38,12 @@ float Trace_Kd = 15.0f;
 /* 不停车循迹参数 (KEY_4: 任务4/5/6, 带平衡球, 减小速度+平顺PID 避免球摇摆) */
 #define NOSTOP_TRACE_KP     15.0f
 #define NOSTOP_TRACE_KD      6.0f
-#define NOSTOP_BASE_SPEED  200.0f
+#define NOSTOP_BASE_SPEED  250.0f           /* 平衡循迹目标速度 */
 
 static int8_t  last_pos_error  = 0;
 static int8_t  last_valid_error = 0;   /* 丢线时保持最后有效误差方向 */
 static uint8_t first_pos_call  = 1;
+static uint32_t ramp_start     = 0;    /* 平衡循迹起步斜坡 */
 
 void control_init(void)
 {
@@ -60,12 +61,14 @@ void control_update(void)
         motor_set_duty(MOTOR_R, 4000);
         first_pos_call     = 1;
         last_valid_error   = 0;
+        ramp_start         = 0;
         return;
     }
 
     /* 停车状态: 反向脉冲 → 制动 */
     if (status == 0) {
         Speed_PID_Reset();
+        ramp_start = 0;
         if (reverse_brake_cnt > 0) {
             reverse_brake_cnt--;
             motor_set_direction(MOTOR_L, MOTOR_BACKWARD);
@@ -109,7 +112,17 @@ void control_update(void)
 
     float kp   = nostop_mode ? NOSTOP_TRACE_KP   : Trace_Kp;
     float kd   = nostop_mode ? NOSTOP_TRACE_KD   : Trace_Kd;
-    float base = nostop_mode ? NOSTOP_BASE_SPEED : Base_Speed_mm_s;
+
+    /* 平衡循迹: 起步 50→250 平滑加速, 克服惯性避免球被甩开 */
+    float base;
+    if (nostop_mode) {
+        if (ramp_start == 0) ramp_start = sys_tick_ms;
+        float t = (float)(sys_tick_ms - ramp_start) / 1000.0f;
+        float ramp = 50.0f + 200.0f * (t / 2.0f);
+        base = (ramp < NOSTOP_BASE_SPEED) ? ramp : NOSTOP_BASE_SPEED;
+    } else {
+        base = Base_Speed_mm_s;
+    }
 
     float turn;
     if (first_pos_call) {

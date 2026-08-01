@@ -40,7 +40,7 @@ int main(void)
     gimbal_motor_init(GIMBAL_MOTOR_L);
     gimbal_motor_init(GIMBAL_MOTOR_R);
 
-    /* KEY_1=循迹停车, KEY_2=任务三, KEY_3=任务三, KEY_4=循迹+平衡 */
+    /* KEY_1=循迹停车, KEY_2=任务三, KEY_4=循迹+平衡 */
     DL_GPIO_enableInterrupt(GPIOA, KEY_KEY_3_PIN);
     NVIC_EnableIRQ(KEY_GPIOA_INT_IRQN);
 
@@ -82,13 +82,6 @@ int main(void)
                 encoder_total = 0;
                 tr_state = WAIT_START;
                 stop_armed = 0;
-            }
-            if (key_nostop_flag) {
-                key_nostop_flag = 0;
-                run_mode = MODE_VISION;
-                task3_active = true;
-                status = 4;
-                gimbal_motor_stop(GIMBAL_MOTOR_R);
             }
             if (key_vision_flag) {
                 key_vision_flag = 0;
